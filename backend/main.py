@@ -98,7 +98,7 @@ def login(data: Credentials, db: Session = Depends(get_db)):
 @app.get("/messages")
 def list_messages(limit: int = 50, user: User = Depends(signed_in), db: Session = Depends(get_db)):
     limit = max(1, min(limit, 100))
-    rows = db.execute(select(Message, User.username).join(User, Message.user_id == User.id).order_by(Message.id.desc()).limit(limit)).all()
+    rows = db.execute(select(Message, User.username).join(User, Message.user_id == User.id).where(Message.user_id == user.id).order_by(Message.id.desc()).limit(limit)).all()
     rows.reverse()
     return [{"id": m.id, "username": name, "text": m.text, "created_at": m.created_at.isoformat()} for m, name in rows]
 
