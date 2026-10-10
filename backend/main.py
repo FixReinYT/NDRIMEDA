@@ -10,6 +10,12 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, create_engin
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://ndrimeda:local-dev-change-me@db:5432/ndrimeda")
+# Neon and many managed PostgreSQL providers supply postgresql:// URLs.
+# Force the installed psycopg 3 driver instead of SQLAlchemy's psycopg2 default.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len("postgres://"):]
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len("postgresql://"):]
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-change-this-secret-before-deployment")
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
