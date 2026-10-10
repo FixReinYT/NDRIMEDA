@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,7 +24,19 @@ jobs:
           gradle-version: "8.9"
       - name: Build APK
         run: gradle :app:assembleDebug
-      - uses: actions/upload-artifact@v4
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
         with:
           name: ndrimeda-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Publish direct APK download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: beta-${{ github.run_number }}
+          name: NDRIMEDA Closed Beta ${{ github.run_number }}
+          body: |
+            Closed beta build of NDRIMEDA.
+            This is a debug APK for testing. Messages remain on-device in offline mode.
+          files: app/build/outputs/apk/debug/app-debug.apk
+          prerelease: true
+          make_latest: false
