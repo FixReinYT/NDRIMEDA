@@ -252,7 +252,18 @@ private fun NdrimedaApp() {
                     TextButton(onClick = { authMode = if (authMode == "register") "login" else "register"; authError = ""; confirmPassword = "" }, modifier = Modifier.fillMaxWidth()) {
                         Text(if (authMode == "register") "Уже есть аккаунт? Войти" else "Нет аккаунта? Зарегистрироваться")
                     }
-                    Text("Публичная бета · серверная регистрация", color = muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            val localName = nameDraft.trim().ifBlank { "Гость" }
+                            username = localName
+                            prefs.edit().putString("username", localName).remove("auth_token").putBoolean("offline_mode", true).apply()
+                            passwordDraft = ""
+                            confirmPassword = ""
+                            authError = ""
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Продолжить офлайн") }
+                    Text("Офлайн-режим: аккаунт на этом устройстве, без сервера. Переписка не синхронизируется.", color = muted, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
                 }
             } else if (discussionParent != null) {
                 Column(Modifier.fillMaxSize().background(bg)) {
@@ -388,7 +399,7 @@ private fun NdrimedaApp() {
                             Text("Настройка сохраняется после перезапуска.", color = muted, fontSize = 12.sp)
                             Spacer(Modifier.height(24.dp))
                             HorizontalDivider(color = line)
-                            Text("Beta 0.2.0 · офлайн-режим", color = muted, modifier = Modifier.padding(top = 14.dp))
+                            Text("Beta 0.2.1 · офлайн-режим", color = muted, modifier = Modifier.padding(top = 14.dp))
                             Text("Сообщения и записи пока доступны только на этом устройстве. Для реальной переписки нужен сервер.", color = muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                             Spacer(Modifier.height(24.dp))
                             OutlinedButton(onClick = { username = ""; nameDraft = ""; prefs.edit().remove("username").remove("auth_token").apply() }, modifier = Modifier.fillMaxWidth()) { Text("Выйти из аккаунта") }
