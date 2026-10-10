@@ -1,27 +1,26 @@
 # NDRIMEDA
 
-NDRIMEDA is a native Android messenger project with a Python backend and PostgreSQL database.
+NDRIMEDA is a native Android messenger project. The Android client uses Kotlin and Jetpack Compose; it is not an HTML app and does not use WebView.
 
-## Components
-- `android/`: native Kotlin + Jetpack Compose Android app (no HTML, no WebView).
-- `backend/`: FastAPI REST API with bearer-token authentication.
-- `database/`: database notes and schema documentation.
-- `.github/workflows/android.yml`: cloud APK build.
+## Repository layout
+- `app/`: native Android app module.
+- `backend/`: FastAPI API with account registration, login, and a shared message feed.
+- `database/`: database notes.
+- `.github/workflows/ci.yml`: cloud Android APK build.
+- `docker-compose.yml`: backend and PostgreSQL services.
 
-## First development milestone
-The starter implementation provides account registration/login and a shared message feed backed by PostgreSQL. This is a development MVP, not a production-ready secure messenger yet. Do not use a real password you use elsewhere.
+## Current state
+The repository now contains the first native Android screen and an API starter. The Android screen is not yet connected to the API; account registration and messaging integration in the app are a next implementation step. The API supports registration/login and shared messages, not private one-to-one chats yet.
 
-## Run the backend locally
+## Backend development run
 1. Install Docker and Docker Compose.
 2. Run `docker compose up --build`.
-3. API health check: `http://localhost:8000/health`.
+3. Check `http://localhost:8000/health`.
 
-Set `JWT_SECRET` to a long random secret before exposing the API publicly. Keep secrets out of Git.
+Before deploying publicly, set strong unique `POSTGRES_PASSWORD` and `JWT_SECRET` values using environment variables or your host's secret manager. Never commit real secrets. Use HTTPS for public access.
 
-## Android
-Open the `android` directory in Android Studio, or use the GitHub Actions workflow to build a debug APK. In the app, set the server URL to the reachable HTTPS address of your deployed backend. `localhost` on a phone means the phone itself, not your server.
+## Android APK
+Open this repository in Android Studio, or open the Actions tab and run the Android APK workflow. The debug APK is uploaded as an Actions artifact after a successful build.
 
-## Current limitations
-- The message feed is shared between registered users; private one-to-one conversations are not implemented yet.
-- No push notifications, end-to-end encryption, media uploads, or account recovery yet.
-- Deploy the backend behind HTTPS and configure secrets before real-world use.
+## Not implemented yet
+Private chats, real-time delivery, push notifications, end-to-end encryption, media, account recovery, database migrations, and production hardening.
