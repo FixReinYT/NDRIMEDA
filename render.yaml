@@ -1,0 +1,18 @@
+# NDRIMEDA API deployment on Render
+# The PostgreSQL database is hosted separately on Neon so the database is not subject
+# to Render's 30-day expiration for free Postgres instances.
+services:
+  - type: web
+    name: ndrimeda-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
