@@ -1,8 +1,16 @@
 package com.ndrimeda
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.media.MediaPlayer
+import android.media.MediaRecorder
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,21 +24,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val Ink = Color(0xFF202532)
-private val Muted = Color(0xFF858B98)
 private val Accent = Color(0xFF5267D9)
-private val Canvas = Color(0xFFF7F8FC)
-private val Line = Color(0xFFE9EBF2)
+private val LightInk = Color(0xFF202532)
+private val LightMuted = Color(0xFF858B98)
+private val LightLine = Color(0xFFE9EBF2)
+private val AvatarColors = listOf(Color(0xFFDCE6FF), Color(0xFFFFE3E8), Color(0xFFDDF4E8), Color(0xFFFFE9CE), Color(0xFFE7E4FF), Color(0xFFD9F2F7))
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -39,416 +50,344 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun createRecorder(context: Context, path: String): MediaRecorder {
+    @Suppress("DEPRECATION")
+    val r = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(context) else MediaRecorder()
+    r.setAudioSource(MediaRecorder.AudioSource.MIC)
+    r.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+    r.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+    r.setAudioEncodingBitRate(96000)
+    r.setAudioSamplingRate(44100)
+    r.setOutputFile(path)
+    r.prepare()
+    r.start()
+    return r
+}
+
+private fun stamp() = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+private fun makeId() = System.currentTimeMillis().toString() + "_" + (0..999).random()
+
 private data class Chat(
-    val id: String,
-    val name: String,
-    val preview: String,
-    val time: String,
-    val initials: String,
-    val color: Color,
-    val unread: Int = 0,
-    val online: Boolean = false
+    val id: String, val name: String, val preview: String, val time: String,
+    val initials: String, val kind: String = "person", val color: Int = 0,
+    val discussionFor: String = ""
 )
-
-private data class Message(val author: String, val text: String, val time: String, val mine: Boolean)
-
-private val starterChats = listOf(
-    Chat("alex", "Алексей", "Скинул тебе файл", "12:42", "А", Color(0xFFDCE6FF), 2, true),
-    Chat("masha", "Маша", "Ты сегодня будешь?", "12:18", "М", Color(0xFFFFE3E8), 1, true),
-    Chat("team", "Команда NDRIMEDA", "Илья: сборка готова", "11:56", "N", Color(0xFFDDF4E8), 3),
-    Chat("danya", "Даня", "ахах, понял", "Вчера", "Д", Color(0xFFFFE9CE)),
-    Chat("saved", "Избранное", "Заметки и сообщения для себя", "Пн", "★", Color(0xFFE7E4FF))
+private data class Message(
+    val id: String, val author: String, val text: String, val time: String,
+    val mine: Boolean, val voice: String = "", val parentId: String = ""
+)
+private val Defaults = listOf(
+    Chat("alex", "Алексей", "Скинул тебе файл", "12:42", "А", color = 0),
+    Chat("masha", "Маша", "Ты сегодня будешь?", "12:18", "М", color = 1),
+    Chat("team", "Команда NDRIMEDA", "Илья: сборка готова", "11:56", "N", "group", 2),
+    Chat("danya", "Даня", "ахах, понял", "Вчера", "Д", color = 3),
+    Chat("saved", "Избранное", "Заметки и сообщения для себя", "Пн", "★", color = 4)
 )
 
 @Composable
 private fun NdrimedaApp() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val prefs = remember(context) {
-        context.getSharedPreferences("ndrimeda_beta", android.content.Context.MODE_PRIVATE)
-    }
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("ndrimeda_beta", Context.MODE_PRIVATE) }
     var username by remember { mutableStateOf(prefs.getString("username", "") ?: "") }
     var nameDraft by remember { mutableStateOf("") }
-    var query by remember { mutableStateOf("") }
-    var draft by remember { mutableStateOf("") }
-    var currentChat by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf("chats") }
+    var currentId by remember { mutableStateOf<String?>(null) }
+    var search by remember { mutableStateOf("") }
+    var draft by remember { mutableStateOf("") }
+    var theme by remember { mutableStateOf(prefs.getString("theme", "light") ?: "light") }
+    var showCreate by remember { mutableStateOf(false) }
+    var newName by remember { mutableStateOf("") }
+    var newKind by remember { mutableStateOf("group") }
     var status by remember { mutableStateOf("") }
-    var localMessages by remember {
-        mutableStateOf(
+    var recording by remember { mutableStateOf(false) }
+    var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
+    var recordPath by remember { mutableStateOf("") }
+    var recordChat by remember { mutableStateOf("") }
+    var playingId by remember { mutableStateOf("") }
+    var player by remember { mutableStateOf<MediaPlayer?>(null) }
+    var discussionParent by remember { mutableStateOf<Message?>(null) }
+    var discussionChatId by remember { mutableStateOf("") }
+
+    var chats by remember {
+        mutableStateOf(runCatching {
+            val a = JSONArray(prefs.getString("custom_chats", "[]"))
+            Defaults + (0 until a.length()).map { i ->
+                val o = a.getJSONObject(i)
+                Chat(o.getString("id"), o.getString("name"), o.optString("preview", "Новый чат"), o.optString("time", ""), o.optString("initials", "N"), o.optString("kind", "group"), o.optInt("color"), o.optString("discussionFor", ""))
+            }
+        }.getOrDefault(Defaults))
+    }
+    var messages by remember {
+        mutableStateOf(runCatching {
+            val a = JSONArray(prefs.getString("messages", "[]"))
+            (0 until a.length()).map { i ->
+                val o = a.getJSONObject(i)
+                o.getString("chat") to Message(o.optString("id", makeId()), o.optString("author"), o.optString("text"), o.optString("time"), o.optBoolean("mine"), o.optString("voice"), o.optString("parentId"))
+            }.groupBy({ it.first }, { it.second })
+        }.getOrDefault(emptyMap()))
+    }
+
+    fun saveChats(list: List<Chat>) {
+        chats = list
+        val a = JSONArray()
+        list.filter { c -> Defaults.none { it.id == c.id } }.forEach { c ->
+            a.put(JSONObject().put("id", c.id).put("name", c.name).put("preview", c.preview).put("time", c.time).put("initials", c.initials).put("kind", c.kind).put("color", c.color).put("discussionFor", c.discussionFor))
+        }
+        prefs.edit().putString("custom_chats", a.toString()).apply()
+    }
+    fun saveMessages(map: Map<String, List<Message>>) {
+        messages = map
+        val a = JSONArray()
+        map.forEach { (chatId, list) -> list.takeLast(300).forEach { m ->
+            a.put(JSONObject().put("chat", chatId).put("id", m.id).put("author", m.author).put("text", m.text).put("time", m.time).put("mine", m.mine).put("voice", m.voice).put("parentId", m.parentId))
+        } }
+        prefs.edit().putString("messages", a.toString()).apply()
+    }
+
+    val dark = theme == "dark"
+    val bg = if (dark) Color(0xFF11141B) else Color(0xFFF7F8FC)
+    val panel = if (dark) Color(0xFF1B202B) else Color.White
+    val ink = if (dark) Color(0xFFF0F2F8) else LightInk
+    val muted = if (dark) Color(0xFFA4ABBB) else LightMuted
+    val line = if (dark) Color(0xFF303746) else LightLine
+    val accent = if (dark) Color(0xFF8B9AFF) else Accent
+    val scheme = if (dark) darkColorScheme(primary = accent, background = bg, surface = panel, onSurface = ink, onBackground = ink) else lightColorScheme(primary = accent, background = bg, surface = panel, onSurface = ink, onBackground = ink)
+    val selected = chats.firstOrNull { it.id == currentId }
+
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted && currentId != null) {
             runCatching {
-                val array = JSONArray(prefs.getString("messages", "[]") ?: "[]")
-                (0 until array.length()).map { i ->
-                    val item = array.getJSONObject(i)
-                    item.optString("chatId") to Message(
-                        item.optString("author"), item.optString("text"),
-                        item.optString("time"), item.optBoolean("mine")
-                    )
-                }.groupBy({ it.first }, { it.second })
-            }.getOrDefault(emptyMap())
-        )
+                val file = File(context.filesDir, "voice_\${System.currentTimeMillis()}.m4a")
+                recorder = createRecorder(context, file.absolutePath)
+                recordPath = file.absolutePath
+                recordChat = currentId!!
+                recording = true
+                status = "Идёт запись. Нажми ■ для отправки."
+            }.onFailure { status = "Не удалось включить запись. Проверь доступ к микрофону." }
+        } else status = "Разреши доступ к микрофону для голосовых сообщений."
     }
 
-    val chats = starterChats.filter {
-        query.isBlank() || it.name.contains(query, true) || it.preview.contains(query, true)
-    }
-    val selected = starterChats.firstOrNull { it.id == currentChat }
-
-    fun persistMessages(updated: Map<String, List<Message>>) {
-        localMessages = updated
-        val array = JSONArray()
-        updated.forEach { (chatId, messages) ->
-            messages.takeLast(200).forEach { message ->
-                array.put(JSONObject()
-                    .put("chatId", chatId)
-                    .put("author", message.author)
-                    .put("text", message.text)
-                    .put("time", message.time)
-                    .put("mine", message.mine))
-            }
-        }
-        prefs.edit().putString("messages", array.toString()).apply()
-    }
-
-    MaterialTheme(
-        colorScheme = lightColorScheme(
-            primary = Accent,
-            onPrimary = Color.White,
-            background = Canvas,
-            surface = Color.White,
-            onSurface = Ink,
-            onBackground = Ink
-        )
-    ) {
-        Surface(Modifier.fillMaxSize(), color = Canvas) {
+    MaterialTheme(colorScheme = scheme) {
+        Surface(Modifier.fillMaxSize(), color = bg) {
             if (username.isBlank()) {
-                WelcomeScreen(
-                    name = nameDraft,
-                    onNameChange = { nameDraft = it.take(24) },
-                    onContinue = {
-                        username = nameDraft.trim()
-                        prefs.edit().putString("username", username).apply()
+                Column(Modifier.fillMaxSize().padding(26.dp), verticalArrangement = Arrangement.Center) {
+                    Box(Modifier.size(66.dp).clip(RoundedCornerShape(22.dp)).background(accent), contentAlignment = Alignment.Center) { Text("N", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold) }
+                    Spacer(Modifier.height(26.dp))
+                    Text("NDRIMEDA", color = accent, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                    Text("Общение без лишнего.", color = ink, fontSize = 29.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(10.dp))
+                    Text("Создавай локальные группы и каналы, записывай голосовые сообщения и настраивай тему.", color = muted)
+                    Spacer(Modifier.height(24.dp))
+                    OutlinedTextField(nameDraft, { nameDraft = it.take(24) }, Modifier.fillMaxWidth(), label = { Text("Твоё имя") }, singleLine = true)
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = { username = nameDraft.trim(); prefs.edit().putString("username", username).apply() }, enabled = nameDraft.trim().length >= 2, modifier = Modifier.fillMaxWidth()) { Text("Продолжить") }
+                    Text("ЗАКРЫТАЯ БЕТА · ЛОКАЛЬНЫЙ РЕЖИМ", color = muted, fontSize = 10.sp, modifier = Modifier.padding(top = 16.dp))
+                }
+            } else if (discussionParent != null) {
+                Column(Modifier.fillMaxSize().background(bg)) {
+                    Row(Modifier.fillMaxWidth().background(panel).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("‹", Modifier.clickable { discussionParent = null }.padding(end = 18.dp), fontSize = 30.sp, color = accent)
+                        Column { Text("Обсуждение", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ink); Text("Комментарии к публикации", color = muted, fontSize = 12.sp) }
                     }
-                )
-            } else if (currentChat != null && selected != null) {
-                ConversationScreen(
-                    chat = selected,
-                    username = username,
-                    messages = localMessages[selected.id].orEmpty(),
-                    draft = draft,
-                    onDraftChange = { draft = it.take(2000) },
-                    onBack = { currentChat = null; draft = "" },
-                    onSend = {
-                        val text = draft.trim()
-                        if (text.isNotEmpty()) {
-                            val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                            persistMessages(localMessages + (selected.id to (localMessages[selected.id].orEmpty() + Message(username, text, time, true))))
-                            draft = ""
+                    Column(Modifier.fillMaxWidth().padding(12.dp).clip(RoundedCornerShape(14.dp)).background(panel).padding(14.dp)) {
+                        Text(discussionParent!!.author, color = accent, fontWeight = FontWeight.Bold)
+                        Text(discussionParent!!.text, color = ink)
+                    }
+                    LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(12.dp)) {
+                        items(messages[discussionChatId].orEmpty(), key = { it.id }) { m ->
+                            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(12.dp)).background(panel).padding(12.dp)) {
+                                Text(m.author, color = accent, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                                Text(m.text, color = ink)
+                                Text(m.time, color = muted, fontSize = 10.sp, modifier = Modifier.align(Alignment.End))
+                            }
                         }
                     }
-                )
+                    var comment by remember { mutableStateOf("") }
+                    Row(Modifier.fillMaxWidth().background(panel).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(comment, { comment = it.take(2000) }, Modifier.weight(1f), placeholder = { Text("Написать комментарий…") }, singleLine = true)
+                        Button(onClick = { if (comment.isNotBlank()) { val m = Message(makeId(), username, comment.trim(), stamp(), true, parentId = discussionParent!!.id); saveMessages(messages + (discussionChatId to (messages[discussionChatId].orEmpty() + m))); comment = "" } }, enabled = comment.isNotBlank()) { Text("➤") }
+                    }
+                }
+            } else if (selected != null) {
+                Column(Modifier.fillMaxSize().background(bg)) {
+                    Row(Modifier.fillMaxWidth().background(panel).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("‹", Modifier.clickable { currentId = null; draft = ""; status = "" }.padding(horizontal = 8.dp), fontSize = 30.sp, color = accent)
+                        Box(Modifier.size(42.dp).clip(CircleShape).background(AvatarColors[selected.color % AvatarColors.size]), contentAlignment = Alignment.Center) { Text(selected.initials, color = ink, fontWeight = FontWeight.Bold) }
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(selected.name, fontWeight = FontWeight.SemiBold, color = ink)
+                            Text(when (selected.kind) { "channel" -> "Канал · публикации"; "group" -> "Группа · локальная"; "discussion" -> "Обсуждение"; else -> "Локальный чат" }, color = muted, fontSize = 12.sp)
+                        }
+                    }
+                    if (selected.kind == "channel") {
+                        Row(Modifier.fillMaxWidth().background(if (dark) Color(0xFF252C40) else Color(0xFFEEF0FF)).clickable {
+                            val existing = chats.firstOrNull { it.discussionFor == selected.id }
+                            val thread = existing ?: Chat("discussion_\${selected.id}", "Обсуждение: \${selected.name}", "Комментарии к каналу", stamp(), "☷", "discussion", 4, selected.id).also { saveChats(chats + it) }
+                            discussionChatId = thread.id
+                            discussionParent = Message("channel_root_\${selected.id}", selected.name, "Обсуждение публикаций канала «\${selected.name}»", stamp(), false)
+                        }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Обсуждения и комментарии", color = accent, modifier = Modifier.weight(1f))
+                            Text("Открыть ›", color = accent, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Text("Демо-режим: сообщения не отправляются другим пользователям.", Modifier.fillMaxWidth().background(panel).padding(9.dp), color = muted, fontSize = 11.sp)
+                    LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        val shown = messages[selected.id].orEmpty().ifEmpty { listOf(Message("seed_\${selected.id}", selected.name, selected.preview, selected.time, false)) }
+                        items(shown, key = { it.id }) { m ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = if (m.mine) Arrangement.End else Arrangement.Start) {
+                                Column(Modifier.widthIn(max = 290.dp).clip(RoundedCornerShape(16.dp)).background(if (m.mine) accent else panel).padding(12.dp)) {
+                                    if (!m.mine) Text(m.author, color = accent, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
+                                    if (m.voice.isNotBlank()) {
+                                        Row(Modifier.clickable {
+                                            runCatching {
+                                                player?.release()
+                                                player = MediaPlayer().apply { setDataSource(m.voice); setOnCompletionListener { it.release(); player = null; playingId = "" }; prepare(); start() }
+                                                playingId = m.id
+                                            }.onFailure { status = "Не удалось воспроизвести аудио." }
+                                        }, verticalAlignment = Alignment.CenterVertically) {
+                                            Text(if (playingId == m.id) "Ⅱ" else "▶", color = if (m.mine) Color.White else accent, fontSize = 22.sp)
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("Голосовое сообщение", color = if (m.mine) Color.White else ink)
+                                        }
+                                    } else Text(m.text, color = if (m.mine) Color.White else ink)
+                                    Row(Modifier.padding(top = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(m.time, color = if (m.mine) Color(0xFFDDE2FF) else muted, fontSize = 10.sp)
+                                        if (selected.kind == "channel" && m.mine) {
+                                            Spacer(Modifier.width(10.dp))
+                                            Text("Обсудить", color = if (m.mine) Color(0xFFDDE2FF) else accent, fontSize = 10.sp, modifier = Modifier.clickable {
+                                                val thread = chats.firstOrNull { it.discussionFor == selected.id } ?: Chat("discussion_\${selected.id}", "Обсуждение: \${selected.name}", "Комментарии к каналу", stamp(), "☷", "discussion", 4, selected.id).also { saveChats(chats + it) }
+                                                discussionChatId = thread.id; discussionParent = m
+                                            })
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (status.isNotBlank()) Text(status, color = muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
+                    Row(Modifier.fillMaxWidth().background(panel).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(draft, { draft = it.take(4000) }, Modifier.weight(1f), placeholder = { Text(if (selected.kind == "channel") "Новая публикация…" else "Сообщение") }, maxLines = 4, shape = RoundedCornerShape(22.dp))
+                        if (selected.kind != "channel" && selected.kind != "discussion") {
+                            Text(if (recording) "■" else "🎙", Modifier.clickable {
+                                if (recording) {
+                                    runCatching {
+                                        recorder?.stop(); recorder?.release(); recorder = null; recording = false
+                                        val m = Message(makeId(), username, "Голосовое сообщение", stamp(), true, recordPath)
+                                        saveMessages(messages + (recordChat to (messages[recordChat].orEmpty() + m)))
+                                        status = "Голосовое сообщение сохранено"
+                                    }.onFailure { recording = false; runCatching { recorder?.release() }; recorder = null; File(recordPath).delete(); status = "Запись слишком короткая. Попробуй ещё раз." }
+                                } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                    runCatching {
+                                        val f = File(context.filesDir, "voice_\${System.currentTimeMillis()}.m4a")
+                                        recorder = createRecorder(context, f.absolutePath); recordPath = f.absolutePath; recordChat = selected.id; recording = true; status = "Идёт запись. Нажми ■ для отправки."
+                                    }.onFailure { status = "Не удалось начать запись." }
+                                } else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }.padding(horizontal = 8.dp), color = if (recording) Color(0xFFE34E5D) else accent, fontSize = 22.sp)
+                        }
+                        Button(onClick = {
+                            if (draft.isNotBlank()) {
+                                val m = Message(makeId(), username, draft.trim(), stamp(), true)
+                                saveMessages(messages + (selected.id to (messages[selected.id].orEmpty() + m)))
+                                saveChats(chats.map { if (it.id == selected.id) it.copy(preview = m.text, time = m.time) else it })
+                                draft = ""
+                            }
+                        }, enabled = draft.isNotBlank(), modifier = Modifier.padding(start = 5.dp), shape = CircleShape, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) { Text("➤") }
+                    }
+                    if (recording) Text("Запись идёт. Нажми ■, чтобы завершить.", Modifier.fillMaxWidth().background(panel).padding(8.dp), color = Color(0xFFE34E5D), fontSize = 12.sp)
+                }
             } else {
-                Scaffold(
-                    containerColor = Canvas,
-                    bottomBar = {
-                        NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
-                            NavigationBarItem(
-                                selected = tab == "chats",
-                                onClick = { tab = "chats" },
-                                icon = { Text("▤", fontSize = 21.sp) },
-                                label = { Text("Чаты") }
-                            )
-                            NavigationBarItem(
-                                selected = tab == "contacts",
-                                onClick = { tab = "contacts" },
-                                icon = { Text("♙", fontSize = 21.sp) },
-                                label = { Text("Контакты") }
-                            )
-                            NavigationBarItem(
-                                selected = tab == "profile",
-                                onClick = { tab = "profile" },
-                                icon = { Text("◉", fontSize = 21.sp) },
-                                label = { Text("Профиль") }
-                            )
-                        }
+                Scaffold(containerColor = bg, bottomBar = {
+                    NavigationBar(containerColor = panel) {
+                        NavigationBarItem(tab == "chats", { tab = "chats" }, icon = { Text("▤") }, label = { Text("Чаты") })
+                        NavigationBarItem(tab == "contacts", { tab = "contacts" }, icon = { Text("♙") }, label = { Text("Контакты") })
+                        NavigationBarItem(tab == "profile", { tab = "profile" }, icon = { Text("◉") }, label = { Text("Профиль") })
                     }
-                ) { padding ->
+                }, floatingActionButton = { if (tab == "chats") FloatingActionButton(onClick = { showCreate = true }, containerColor = accent, contentColor = Color.White) { Text("＋", fontSize = 26.sp) } }) { padding ->
                     when (tab) {
-                        "profile" -> ProfileScreen(
-                            username = username,
-                            onLogout = {
-                                username = ""
-                                nameDraft = ""
-                                tab = "chats"
-                                prefs.edit().remove("username").apply()
+                        "profile" -> Column(Modifier.fillMaxSize().padding(padding).padding(22.dp)) {
+                            Text("Профиль и настройки", color = ink, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(24.dp))
+                            Text(username, color = ink, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Оформление", color = muted, fontSize = 12.sp, modifier = Modifier.padding(top = 28.dp))
+                            Text("Тема приложения", color = ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(theme == "light", { theme = "light"; prefs.edit().putString("theme", theme).apply() }, label = { Text("Светлая") })
+                                FilterChip(theme == "dark", { theme = "dark"; prefs.edit().putString("theme", theme).apply() }, label = { Text("Тёмная") })
                             }
-                        )
-                        "contacts" -> ContactsScreen(onOpenChat = { currentChat = it; tab = "chats" })
-                        else -> Column(
-                            Modifier.fillMaxSize().padding(padding)
-                        ) {
-                            Row(
-                                Modifier.fillMaxWidth().padding(start = 22.dp, end = 18.dp, top = 18.dp, bottom = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("NDRIMEDA", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                                    Text("Чаты", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Ink)
-                                }
-                                HeaderAction("＋") { status = "Создание нового чата появится в онлайн-версии." }
+                            Text("Настройка сохраняется после перезапуска.", color = muted, fontSize = 12.sp)
+                            Spacer(Modifier.height(24.dp))
+                            HorizontalDivider(color = line)
+                            Text("Beta 0.2.0 · офлайн-режим", color = muted, modifier = Modifier.padding(top = 14.dp))
+                            Text("Сообщения и записи пока доступны только на этом устройстве. Для реальной переписки нужен сервер.", color = muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                            Spacer(Modifier.height(24.dp))
+                            OutlinedButton(onClick = { username = ""; nameDraft = ""; prefs.edit().remove("username").apply() }, modifier = Modifier.fillMaxWidth()) { Text("Сменить профиль") }
+                        }
+                        "contacts" -> Column(Modifier.fillMaxSize().padding(padding).padding(20.dp)) {
+                            Text("Контакты", color = ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                            LazyColumn { items(chats.filter { it.kind != "channel" && it.kind != "discussion" }, key = { it.id }) { c -> ChatRow(c, { currentId = c.id }, panel, ink, muted, line) } }
+                        }
+                        else -> Column(Modifier.fillMaxSize().padding(padding)) {
+                            Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 18.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) { Text("NDRIMEDA", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp); Text("Сообщения", color = ink, fontSize = 29.sp, fontWeight = FontWeight.Bold) }
+                                Text(if (dark) "☾" else "☀", Modifier.clickable { theme = if (dark) "light" else "dark"; prefs.edit().putString("theme", theme).apply() }.padding(12.dp), color = ink, fontSize = 22.sp)
                             }
-                            OutlinedTextField(
-                                value = query,
-                                onValueChange = { query = it },
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-                                placeholder = { Text("Поиск по чатам", color = Muted) },
-                                leadingIcon = { Text("⌕", fontSize = 25.sp, color = Muted) },
-                                singleLine = true,
-                                shape = RoundedCornerShape(16.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    unfocusedBorderColor = Line,
-                                    focusedBorderColor = Accent,
-                                    unfocusedContainerColor = Color.White,
-                                    focusedContainerColor = Color.White
-                                )
-                            )
-                            Text(
-                                "НЕДАВНИЕ",
-                                modifier = Modifier.padding(start = 22.dp, top = 10.dp, bottom = 10.dp),
-                                color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp
-                            )
-                            LazyColumn(
-                                Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(bottom = 16.dp)
-                            ) {
-                                items(chats, key = { it.id }) { chat ->
-                                    ChatRow(chat = chat, onClick = { currentChat = chat.id })
-                                }
-                                if (chats.isEmpty()) {
-                                    item {
-                                        Text("Ничего не найдено", color = Muted, modifier = Modifier.padding(24.dp))
-                                    }
-                                }
-                                if (status.isNotBlank()) {
-                                    item {
-                                        Text(status, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp))
-                                    }
-                                }
-                                item {
-                                    Text(
-                                        "Бета-режим · переписки пока хранятся на этом устройстве",
-                                        color = Muted, fontSize = 11.sp,
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp)
-                                    )
-                                }
+                            OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), placeholder = { Text("Поиск по чатам") }, singleLine = true, shape = RoundedCornerShape(16.dp))
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(search.isBlank(), { search = "" }, label = { Text("Все") })
+                                FilterChip(search == "#group", { search = "#group" }, label = { Text("Группы") })
+                                FilterChip(search == "#channel", { search = "#channel" }, label = { Text("Каналы") })
+                            }
+                            val filtered = chats.filter { c -> search.isBlank() || (search == "#group" && c.kind == "group") || (search == "#channel" && c.kind == "channel") || (search != "#group" && search != "#channel" && (c.name.contains(search, true) || c.preview.contains(search, true))) }
+                            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 18.dp)) {
+                                items(filtered, key = { it.id }) { c -> ChatRow(c, { currentId = c.id }, panel, ink, muted, line) }
+                                if (filtered.isEmpty()) item { Text("Пока пусто. Нажми +, чтобы создать чат, группу или канал.", color = muted, modifier = Modifier.padding(24.dp)) }
                             }
                         }
                     }
                 }
+                if (showCreate) AlertDialog(
+                    onDismissRequest = { showCreate = false },
+                    title = { Text("Создать") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(newName, { newName = it.take(40) }, label = { Text("Название") }, singleLine = true)
+                            listOf("person" to "Личный чат (локальный)", "group" to "Групповой чат", "channel" to "Канал").forEach { (value, label) ->
+                                Row(Modifier.fillMaxWidth().clickable { newKind = value }, verticalAlignment = Alignment.CenterVertically) {
+                                    RadioButton(newKind == value, { newKind = value }); Text(label)
+                                }
+                            }
+                            Text("Создание локальное: приглашения и публикация в интернет пока не работают.", color = muted, fontSize = 12.sp)
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = {
+                        if (newName.trim().length >= 2) {
+                            val id = "local_\${makeId()}"
+                            val c = Chat(id, newName.trim(), if (newKind == "channel") "Новый канал" else "Новый чат", stamp(), newName.trim().take(1).uppercase(), newKind, chats.size % AvatarColors.size)
+                            saveChats(chats + c); currentId = id; newName = ""; showCreate = false
+                        }
+                    }) { Text("Создать") } },
+                    dismissButton = { TextButton(onClick = { showCreate = false }) { Text("Отмена") } }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun WelcomeScreen(name: String, onNameChange: (String) -> Unit, onContinue: () -> Unit) {
-    Column(
-        Modifier.fillMaxSize().background(Canvas).padding(horizontal = 26.dp),
-        verticalArrangement = Arrangement.Center
-    ) {
-        Box(
-            Modifier.size(66.dp).clip(RoundedCornerShape(22.dp)).background(Accent),
-            contentAlignment = Alignment.Center
-        ) { Text("N", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold) }
-        Spacer(Modifier.height(28.dp))
-        Text("NDRIMEDA", color = Accent, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-        Spacer(Modifier.height(8.dp))
-        Text("Общение без лишнего.", color = Ink, fontSize = 29.sp, fontWeight = FontWeight.Bold, lineHeight = 36.sp)
-        Spacer(Modifier.height(10.dp))
-        Text("Выбери имя и посмотри, как устроена бета-версия мессенджера.", color = Muted, fontSize = 15.sp, lineHeight = 22.sp)
-        Spacer(Modifier.height(28.dp))
-        OutlinedTextField(
-            value = name,
-            onValueChange = onNameChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Твоё имя") },
-            singleLine = true,
-            shape = RoundedCornerShape(16.dp),
-            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Accent, unfocusedContainerColor = Color.White, focusedContainerColor = Color.White)
-        )
-        Spacer(Modifier.height(14.dp))
-        Button(
-            onClick = onContinue,
-            enabled = name.trim().length >= 2,
-            modifier = Modifier.fillMaxWidth().height(54.dp),
-            shape = RoundedCornerShape(16.dp)
-        ) { Text("Продолжить", fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
-        Spacer(Modifier.height(18.dp))
-        Text("ЗАКРЫТАЯ БЕТА · ОФЛАЙН", color = Muted, fontSize = 10.sp, letterSpacing = 1.2.sp)
-    }
-}
-
-@Composable
-private fun ChatRow(chat: Chat, onClick: () -> Unit) {
+private fun ChatRow(c: Chat, onClick: () -> Unit, panel: Color, ink: Color, muted: Color, line: Color) {
     Column {
-        Row(
-            Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box {
-                Box(
-                    Modifier.size(54.dp).clip(CircleShape).background(chat.color),
-                    contentAlignment = Alignment.Center
-                ) { Text(chat.initials, color = Ink, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
-                if (chat.online) {
-                    Box(Modifier.align(Alignment.BottomEnd).size(13.dp).clip(CircleShape).background(Color.White).padding(2.dp)) {
-                        Box(Modifier.fillMaxSize().clip(CircleShape).background(Color(0xFF39B980)))
-                    }
-                }
+        Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(52.dp).clip(CircleShape).background(AvatarColors[c.color % AvatarColors.size]), contentAlignment = Alignment.Center) {
+                Text(when (c.kind) { "channel" -> "◉"; "group" -> "♧"; "discussion" -> "☷"; else -> c.initials }, color = ink, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
             }
-            Spacer(Modifier.width(13.dp))
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(chat.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(5.dp))
-                Text(chat.preview, fontSize = 13.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(c.name, color = ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(4.dp))
+                Text(c.preview, color = muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Spacer(Modifier.width(8.dp))
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text(chat.time, fontSize = 11.sp, color = Muted)
-                if (chat.unread > 0) {
-                    Box(Modifier.defaultMinSize(minWidth = 20.dp, minHeight = 20.dp).clip(CircleShape).background(Accent).padding(horizontal = 5.dp), contentAlignment = Alignment.Center) {
-                        Text(chat.unread.toString(), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
+            Text(c.time, color = muted, fontSize = 11.sp)
         }
-        HorizontalDivider(color = Line, thickness = 0.7.dp, modifier = Modifier.padding(start = 87.dp))
+        HorizontalDivider(color = line, thickness = 0.7.dp, modifier = Modifier.padding(start = 82.dp))
     }
-}
-
-@Composable
-private fun ConversationScreen(
-    chat: Chat,
-    username: String,
-    messages: List<Message>,
-    draft: String,
-    onDraftChange: (String) -> Unit,
-    onBack: () -> Unit,
-    onSend: () -> Unit
-) {
-    Column(Modifier.fillMaxSize().background(Canvas)) {
-        Row(
-            Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("‹", modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 10.dp), fontSize = 32.sp, color = Accent)
-            Box(Modifier.size(42.dp).clip(CircleShape).background(chat.color), contentAlignment = Alignment.Center) {
-                Text(chat.initials, fontWeight = FontWeight.SemiBold, color = Ink)
-            }
-            Spacer(Modifier.width(11.dp))
-            Column(Modifier.weight(1f)) {
-                Text(chat.name, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = Ink)
-                Text(if (chat.online) "в сети" else "демо-чат", fontSize = 12.sp, color = if (chat.online) Color(0xFF2C9A70) else Muted)
-            }
-            Text("⋮", color = Muted, fontSize = 24.sp, modifier = Modifier.padding(horizontal = 10.dp))
-        }
-        Text(
-            "Это демонстрационная переписка. Другие пользователи её не видят.",
-            modifier = Modifier.fillMaxWidth().background(Color(0xFFEEF0FF)).padding(horizontal = 16.dp, vertical = 9.dp),
-            color = Accent, fontSize = 11.sp, lineHeight = 15.sp
-        )
-        LazyColumn(
-            Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            reverseLayout = false
-        ) {
-            val shownMessages = if (messages.isNotEmpty()) messages else listOf(
-                Message(chat.name, chat.preview, chat.time, false)
-            )
-            items(shownMessages) { message ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.mine) Arrangement.End else Arrangement.Start) {
-                    Column(
-                        Modifier.widthIn(max = 290.dp)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(if (message.mine) Accent else Color.White)
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        if (!message.mine) Text(message.author, color = Accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                        Text(message.text, color = if (message.mine) Color.White else Ink, fontSize = 14.sp, lineHeight = 20.sp)
-                        Spacer(Modifier.height(4.dp))
-                        Text(message.time, color = if (message.mine) Color(0xFFDDE2FF) else Muted, fontSize = 10.sp, modifier = Modifier.align(Alignment.End))
-                    }
-                }
-            }
-        }
-        Row(
-            Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 10.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = draft,
-                onValueChange = onDraftChange,
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Сообщение", color = Muted) },
-                shape = RoundedCornerShape(24.dp),
-                singleLine = false,
-                maxLines = 4,
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Accent, unfocusedContainerColor = Canvas, focusedContainerColor = Canvas)
-            )
-            Spacer(Modifier.width(8.dp))
-            Button(onClick = onSend, enabled = draft.isNotBlank(), contentPadding = PaddingValues(0.dp), modifier = Modifier.size(48.dp), shape = CircleShape) {
-                Text("➤", fontSize = 20.sp)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ContactsScreen(onOpenChat: (String) -> Unit) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 24.dp)) {
-        Text("Контакты", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Ink)
-        Spacer(Modifier.height(8.dp))
-        Text("Знакомые из демо-списка", color = Muted, fontSize = 14.sp)
-        Spacer(Modifier.height(20.dp))
-        starterChats.filter { it.id != "saved" }.forEach { chat ->
-            ChatRow(chat.copy(preview = "Открыть переписку"), onClick = { onOpenChat(chat.id) })
-        }
-    }
-}
-
-@Composable
-private fun ProfileScreen(username: String, onLogout: () -> Unit) {
-    Column(
-        Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 24.dp),
-        horizontalAlignment = Alignment.Start
-    ) {
-        Text("Профиль", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Ink)
-        Spacer(Modifier.height(28.dp))
-        Box(Modifier.size(76.dp).clip(CircleShape).background(Color(0xFFE3E7FF)), contentAlignment = Alignment.Center) {
-            Text(username.take(1).uppercase(), fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Accent)
-        }
-        Spacer(Modifier.height(14.dp))
-        Text(username, fontSize = 21.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-        Text("Локальный профиль бета-тестера", color = Muted, fontSize = 13.sp)
-        Spacer(Modifier.height(24.dp))
-        HorizontalDivider(color = Line)
-        Spacer(Modifier.height(16.dp))
-        Text("Версия", color = Muted, fontSize = 12.sp)
-        Text("NDRIMEDA Beta 0.1.0", color = Ink, fontSize = 15.sp)
-        Spacer(Modifier.height(16.dp))
-        Text("Режим", color = Muted, fontSize = 12.sp)
-        Text("Офлайн · данные на устройстве", color = Ink, fontSize = 15.sp)
-        Spacer(Modifier.height(28.dp))
-        OutlinedButton(onClick = onLogout, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
-            Text("Сменить профиль")
-        }
-    }
-}
-
-@Composable
-private fun HeaderAction(label: String, onClick: () -> Unit) {
-    Box(
-        Modifier.size(44.dp).clip(RoundedCornerShape(15.dp)).background(Color.White).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) { Text(label, fontSize = 25.sp, color = Accent) }
 }
