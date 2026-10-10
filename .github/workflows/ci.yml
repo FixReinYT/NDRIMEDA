@@ -37,7 +37,8 @@ jobs:
           body: |
             Public beta build of NDRIMEDA.
             This is a debug APK for testing, not a Google Play release.
-            Account registration/login require the API to be deployed and configured as described in README.md.
+            Offline entry is available without a server.
+            Server registration/login require the API to be deployed and configured as described in README.md.
             Chats, voice notes, channels, and comments remain local to the device in this beta.
           files: app/build/outputs/apk/debug/app-debug.apk
           prerelease: true
