@@ -12,8 +12,8 @@ android {
         applicationId = "com.ndrimeda"
         minSdk = 26
         targetSdk = 35
-        versionCode = 31
-        versionName = "0.2.1-beta31"
+        versionCode = 33
+        versionName = "0.3.0-beta33"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
