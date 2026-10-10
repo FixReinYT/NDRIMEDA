@@ -1,36 +1,32 @@
 # NDRIMEDA
 
-NDRIMEDA is a native Android app built with Kotlin and Jetpack Compose. It is not an HTML app and does not use WebView.
+NDRIMEDA is a native Android app built with Kotlin and Jetpack Compose.
 
-## Closed beta build
+## Beta 20 status
 
-The current beta is intentionally **offline-only** so testers can open the app without a server account or network setup.
+- The app now has a registration/login screen that calls the NDRIMEDA API.
+- Registration requires a unique username and a password of at least 8 characters.
+- Test conversations and the previous local profile are cleared once on first launch of Beta 20.
+- Chat lists start empty; users create their own local chats and channels.
+- Local chat messages, voice notes, channel posts, and comments are still stored on the device and are not synchronized between accounts yet.
+- The app is an early public beta and must not be used for sensitive conversations.
 
-- Choose a display name and enter the app.
-- Send test messages in the local feed.
-- Messages are saved on the device and remain after restarting the app.
-- Up to 300 recent local messages are retained.
-- Each tester's feed is local to their own device; messages are not shared between testers.
+## Server deployment
 
-This is a UI and local-storage beta. Online accounts, shared chats, private conversations, real-time delivery, and server sync are not enabled in this build. Do not use it for sensitive messages.
+The API is a FastAPI prototype in `backend/`. `render.yaml` defines the Render web service, and the service expects a PostgreSQL connection string in the `DATABASE_URL` environment variable. Before registration can work:
 
-## Build the Android APK
+1. Deploy the repository using the Render blueprint.
+2. Set `DATABASE_URL` to a valid PostgreSQL connection string (the current blueprint expects an external Neon database).
+3. Confirm that `https://ndrimeda-api.onrender.com/health` returns a JSON health response. If Render assigns a different hostname, update `API_BASE_URL` in `app/src/main/java/com/ndrimeda/MainActivity.kt` and rebuild.
 
-The GitHub Actions workflow builds a debug APK automatically when code is pushed. Open the repository's **Actions** tab, select the latest successful **Android APK** run, and download the **ndrimeda-debug-apk** artifact. The artifact is a ZIP containing the APK.
+GitHub Actions builds a debug APK for beta testing. A successful build does not itself deploy or host the API.
 
-## Repository layout
+## Download
 
-- app/: native Android app and API client.
-- backend/: FastAPI prototype with registration, login, and shared messages; not used by the current offline beta.
-- database/: PostgreSQL schema notes.
-- .github/workflows/ci.yml: automated Android build and backend syntax check.
-- docker-compose.yml: local backend and PostgreSQL development setup.
+Open the repository's **Releases** page and download `app-debug.apk` from the latest beta release. Android may warn that the debug APK is not distributed through Google Play.
 
-## Planned after the offline beta
+## Current limitations
 
-- Online accounts and shared messaging.
-- Private one-to-one chats.
-- Real-time delivery and notifications.
-- Media uploads, account recovery, end-to-end encryption, and production hardening.
-
-The backend is still a prototype and must be properly configured and secured before any public online launch.
+- Online account registration and login require the API and PostgreSQL to be deployed and configured.
+- Chats and messages are still local to each device; shared one-to-one and group messaging, notifications, account recovery, and end-to-end encryption are not implemented.
+- The backend is a prototype and needs additional security review and integration testing before it should be treated as a production messenger.
