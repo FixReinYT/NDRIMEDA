@@ -33,10 +33,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: beta-${{ github.run_number }}
-          name: NDRIMEDA Closed Beta ${{ github.run_number }}
+          name: NDRIMEDA Public Beta ${{ github.run_number }}
           body: |
-            Closed beta build of NDRIMEDA.
-            This is a debug APK for testing. Messages remain on-device in offline mode.
+            Public beta build of NDRIMEDA.
+            This is a debug APK for testing, not a Google Play release.
+            Account registration/login require the API to be deployed and configured as described in README.md.
+            Chats, voice notes, channels, and comments remain local to the device in this beta.
           files: app/build/outputs/apk/debug/app-debug.apk
           prerelease: true
           make_latest: false
