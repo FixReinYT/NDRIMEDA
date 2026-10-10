@@ -9,10 +9,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -23,95 +26,147 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun NdrimedaScreen() {
-    var server by remember { mutableStateOf("https://YOUR-SERVER.example") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val prefs = remember(context) {
+        context.getSharedPreferences("ndrimeda_beta", android.content.Context.MODE_PRIVATE)
+    }
+    var username by remember { mutableStateOf(prefs.getString("username", "") ?: "") }
+    var nameDraft by remember { mutableStateOf("") }
     var draft by remember { mutableStateOf("") }
-    var token by remember { mutableStateOf<String?>(null) }
-    var name by remember { mutableStateOf("") }
-    var messages by remember { mutableStateOf(emptyList<ChatMessage>()) }
-    var status by remember { mutableStateOf("Set your API HTTPS URL.") }
-    var busy by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-
-    fun refresh(auth: String) {
-        scope.launch {
-            busy = true
-            try {
-                messages = withContext(Dispatchers.IO) { NdrimedaApi.messages(server, auth) }
-                status = "Messages refreshed."
-            } catch (e: Exception) { status = e.message ?: "Request failed." }
-            busy = false
-        }
+    var status by remember { mutableStateOf("Offline beta build") }
+    var messages by remember {
+        mutableStateOf(
+            runCatching {
+                val stored = JSONArray(prefs.getString("messages", "[]") ?: "[]")
+                (0 until stored.length()).map { index ->
+                    val item = stored.getJSONObject(index)
+                    ChatMessage(
+                        item.optString("username"),
+                        item.optString("text"),
+                        item.optString("created_at")
+                    )
+                }
+            }.getOrDefault(emptyList())
+        )
     }
 
-    fun auth(register: Boolean) {
-        if (username.trim().length < 3 || password.length < 8) {
-            status = "Username needs 3+ characters; password needs 8+."
-            return
+    fun saveMessages(updated: List<ChatMessage>) {
+        messages = updated
+        val array = JSONArray()
+        updated.takeLast(300).forEach { message ->
+            array.put(
+                JSONObject()
+                    .put("username", message.username)
+                    .put("text", message.text)
+                    .put("created_at", message.createdAt)
+            )
         }
-        scope.launch {
-            busy = true
-            try {
-                val result = withContext(Dispatchers.IO) {
-                    NdrimedaApi.authenticate(server, username.trim(), password, register)
-                }
-                val authToken = result.getString("access_token")
-                token = authToken
-                name = result.getJSONObject("user").getString("username")
-                messages = withContext(Dispatchers.IO) { NdrimedaApi.messages(server, authToken) }
-                status = "Connected."
-            } catch (e: Exception) { status = e.message ?: "Login failed." }
-            busy = false
-        }
+        prefs.edit().putString("messages", array.toString()).apply()
     }
 
     MaterialTheme {
-        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Text("NDRIMEDA", style = MaterialTheme.typography.headlineMedium)
-            OutlinedTextField(server, { server = it }, label = { Text("Backend HTTPS URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            if (token == null) {
-                OutlinedTextField(username, { username = it }, label = { Text("Username") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(password, { password = it }, label = { Text("Password (8+ characters)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { auth(true) }, enabled = !busy, modifier = Modifier.weight(1f)) { Text("Register") }
-                    Button(onClick = { auth(false) }, enabled = !busy, modifier = Modifier.weight(1f)) { Text("Log in") }
-                }
+            Text("CLOSED BETA · OFFLINE MODE", style = MaterialTheme.typography.labelMedium)
+            HorizontalDivider()
+
+            if (username.isBlank()) {
+                Text("Welcome to the NDRIMEDA beta", style = MaterialTheme.typography.titleLarge)
+                Text("Choose a display name to try the app. No account or server is required.")
+                OutlinedTextField(
+                    value = nameDraft,
+                    onValueChange = { nameDraft = it.take(24) },
+                    label = { Text("Display name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Button(
+                    onClick = {
+                        val chosen = nameDraft.trim()
+                        if (chosen.length < 2) {
+                            status = "Enter at least 2 characters."
+                        } else {
+                            username = chosen
+                            prefs.edit().putString("username", chosen).apply()
+                            status = "You're in the offline beta."
+                        }
+                    },
+                    enabled = nameDraft.trim().length >= 2,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Enter beta") }
+                Spacer(Modifier.weight(1f))
             } else {
-                Text("Signed in as $name")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { refresh(token!!) }, enabled = !busy, modifier = Modifier.weight(1f)) { Text("Refresh") }
-                    OutlinedButton(onClick = { token = null; messages = emptyList() }, modifier = Modifier.weight(1f)) { Text("Log out") }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Local feed", style = MaterialTheme.typography.titleLarge)
+                        Text("Signed in as $username", style = MaterialTheme.typography.bodySmall)
+                    }
+                    TextButton(onClick = {
+                        username = ""
+                        nameDraft = ""
+                        prefs.edit().remove("username").apply()
+                        status = "Choose a display name to continue."
+                    }) { Text("Log out") }
                 }
-                LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(messages) { m ->
+
+                if (messages.isEmpty()) {
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text("Your beta starts here", style = MaterialTheme.typography.titleMedium)
+                            Text("Send a test message below. In this build, messages stay on this device and are not visible to other testers.")
+                        }
+                    }
+                }
+
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(messages) { message ->
                         Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(10.dp)) {
-                                Text(m.username, style = MaterialTheme.typography.labelLarge)
-                                Text(m.text)
-                                Text(m.createdAt, style = MaterialTheme.typography.labelSmall)
+                            Column(Modifier.padding(12.dp)) {
+                                Text(message.username, style = MaterialTheme.typography.labelLarge)
+                                Spacer(Modifier.height(3.dp))
+                                Text(message.text)
+                                Spacer(Modifier.height(3.dp))
+                                Text(message.createdAt, style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }
                 }
-                OutlinedTextField(draft, { draft = it }, label = { Text("Message to shared feed") }, modifier = Modifier.fillMaxWidth())
-                Button(onClick = {
-                    val text = draft.trim()
-                    if (text.isNotEmpty()) scope.launch {
-                        busy = true
-                        try {
-                            withContext(Dispatchers.IO) { NdrimedaApi.send(server, token!!, text) }
+
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it.take(2000) },
+                    label = { Text("Test message") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(
+                    onClick = {
+                        val text = draft.trim()
+                        if (text.isNotEmpty()) {
+                            val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                            saveMessages(messages + ChatMessage(username, text, time))
                             draft = ""
-                            messages = withContext(Dispatchers.IO) { NdrimedaApi.messages(server, token!!) }
-                            status = "Message sent."
-                        } catch (e: Exception) { status = e.message ?: "Send failed." }
-                        busy = false
-                    }
-                }, enabled = !busy && draft.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Send") }
+                            status = "Saved on this device."
+                        }
+                    },
+                    enabled = draft.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Send") }
             }
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+
+            Text(
+                "Offline beta: messages are stored only on this device. Online accounts, shared chats and server sync are not enabled yet.",
+                style = MaterialTheme.typography.bodySmall
+            )
             Text(status, style = MaterialTheme.typography.bodySmall)
-            Text("Development version: the feed is shared, not private chats.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
