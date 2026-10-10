@@ -33,6 +33,8 @@ import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -64,6 +66,24 @@ private fun createRecorder(context: Context, path: String): MediaRecorder {
     return r
 }
 
+
+private fun authRequest(path: String, username: String, password: String): JSONObject {
+    val connection = (URL(API_BASE_URL + path).openConnection() as HttpURLConnection)
+    connection.requestMethod = "POST"
+    connection.connectTimeout = 12000
+    connection.readTimeout = 12000
+    connection.doOutput = true
+    connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+    val payload = JSONObject().put("username", username).put("password", password).toString()
+    connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+    val code = connection.responseCode
+    val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+    val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+    connection.disconnect()
+    val result = if (body.isBlank()) JSONObject() else JSONObject(body)
+    if (code !in 200..299) throw IllegalStateException(result.optString("detail", "Ошибка сервера (" + code + ")"))
+    return result
+}
 private fun stamp() = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
 private fun makeId() = System.currentTimeMillis().toString() + "_" + (0..999).random()
 
