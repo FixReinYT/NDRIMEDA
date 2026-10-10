@@ -157,7 +157,7 @@ private fun NdrimedaApp() {
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted && currentId != null) {
             runCatching {
-                val file = File(context.filesDir, "voice_\${System.currentTimeMillis()}.m4a")
+                val file = File(context.filesDir, "voice_${System.currentTimeMillis()}.m4a")
                 recorder = createRecorder(context, file.absolutePath)
                 recordPath = file.absolutePath
                 recordChat = currentId!!
@@ -222,9 +222,9 @@ private fun NdrimedaApp() {
                     if (selected.kind == "channel") {
                         Row(Modifier.fillMaxWidth().background(if (dark) Color(0xFF252C40) else Color(0xFFEEF0FF)).clickable {
                             val existing = chats.firstOrNull { it.discussionFor == selected.id }
-                            val thread = existing ?: Chat("discussion_\${selected.id}", "Обсуждение: \${selected.name}", "Комментарии к каналу", stamp(), "☷", "discussion", 4, selected.id).also { saveChats(chats + it) }
+                            val thread = existing ?: Chat("discussion_${selected.id}", "Обсуждение: ${selected.name}", "Комментарии к каналу", stamp(), "☷", "discussion", 4, selected.id).also { saveChats(chats + it) }
                             discussionChatId = thread.id
-                            discussionParent = Message("channel_root_\${selected.id}", selected.name, "Обсуждение публикаций канала «\${selected.name}»", stamp(), false)
+                            discussionParent = Message("channel_root_${selected.id}", selected.name, "Обсуждение публикаций канала «${selected.name}»", stamp(), false)
                         }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("Обсуждения и комментарии", color = accent, modifier = Modifier.weight(1f))
                             Text("Открыть ›", color = accent, fontWeight = FontWeight.Bold)
@@ -232,7 +232,7 @@ private fun NdrimedaApp() {
                     }
                     Text("Демо-режим: сообщения не отправляются другим пользователям.", Modifier.fillMaxWidth().background(panel).padding(9.dp), color = muted, fontSize = 11.sp)
                     LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                        val shown = messages[selected.id].orEmpty().ifEmpty { listOf(Message("seed_\${selected.id}", selected.name, selected.preview, selected.time, false)) }
+                        val shown = messages[selected.id].orEmpty().ifEmpty { listOf(Message("seed_${selected.id}", selected.name, selected.preview, selected.time, false)) }
                         items(shown, key = { it.id }) { m ->
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = if (m.mine) Arrangement.End else Arrangement.Start) {
                                 Column(Modifier.widthIn(max = 290.dp).clip(RoundedCornerShape(16.dp)).background(if (m.mine) accent else panel).padding(12.dp)) {
@@ -255,7 +255,7 @@ private fun NdrimedaApp() {
                                         if (selected.kind == "channel" && m.mine) {
                                             Spacer(Modifier.width(10.dp))
                                             Text("Обсудить", color = if (m.mine) Color(0xFFDDE2FF) else accent, fontSize = 10.sp, modifier = Modifier.clickable {
-                                                val thread = chats.firstOrNull { it.discussionFor == selected.id } ?: Chat("discussion_\${selected.id}", "Обсуждение: \${selected.name}", "Комментарии к каналу", stamp(), "☷", "discussion", 4, selected.id).also { saveChats(chats + it) }
+                                                val thread = chats.firstOrNull { it.discussionFor == selected.id } ?: Chat("discussion_${selected.id}", "Обсуждение: ${selected.name}", "Комментарии к каналу", stamp(), "☷", "discussion", 4, selected.id).also { saveChats(chats + it) }
                                                 discussionChatId = thread.id; discussionParent = m
                                             })
                                         }
@@ -278,7 +278,7 @@ private fun NdrimedaApp() {
                                     }.onFailure { recording = false; runCatching { recorder?.release() }; recorder = null; File(recordPath).delete(); status = "Запись слишком короткая. Попробуй ещё раз." }
                                 } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                                     runCatching {
-                                        val f = File(context.filesDir, "voice_\${System.currentTimeMillis()}.m4a")
+                                        val f = File(context.filesDir, "voice_${System.currentTimeMillis()}.m4a")
                                         recorder = createRecorder(context, f.absolutePath); recordPath = f.absolutePath; recordChat = selected.id; recording = true; status = "Идёт запись. Нажми ■ для отправки."
                                     }.onFailure { status = "Не удалось начать запись." }
                                 } else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -361,7 +361,7 @@ private fun NdrimedaApp() {
                     },
                     confirmButton = { TextButton(onClick = {
                         if (newName.trim().length >= 2) {
-                            val id = "local_\${makeId()}"
+                            val id = "local_${makeId()}"
                             val c = Chat(id, newName.trim(), if (newKind == "channel") "Новый канал" else "Новый чат", stamp(), newName.trim().take(1).uppercase(), newKind, chats.size % AvatarColors.size)
                             saveChats(chats + c); currentId = id; newName = ""; showCreate = false
                         }
