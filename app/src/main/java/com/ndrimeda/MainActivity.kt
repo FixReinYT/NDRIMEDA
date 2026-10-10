@@ -315,7 +315,7 @@ private fun NdrimedaApp() {
                             Text("Открыть ›", color = accent, fontWeight = FontWeight.Bold)
                         }
                     }
-                    Text("Демо-режим: сообщения не отправляются другим пользователям.", Modifier.fillMaxWidth().background(panel).padding(9.dp), color = muted, fontSize = 11.sp)
+                    Text("Локальный режим · сообщения видны только на этом устройстве.", Modifier.fillMaxWidth().background(panel).padding(9.dp), color = muted, fontSize = 11.sp)
                     LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                         val shown = messages[selected.id].orEmpty().ifEmpty { listOf(Message("seed_${selected.id}", selected.name, selected.preview, selected.time, false)) }
                         items(shown, key = { it.id }) { m ->
@@ -396,10 +396,55 @@ private fun NdrimedaApp() {
                     NavigationBar(containerColor = panel) {
                         NavigationBarItem(tab == "chats", { tab = "chats" }, icon = { Text("▤") }, label = { Text("Чаты") })
                         NavigationBarItem(tab == "contacts", { tab = "contacts" }, icon = { Text("♙") }, label = { Text("Контакты") })
+                        NavigationBarItem(tab == "network", { tab = "network" }, icon = { Text("⇄") }, label = { Text("Сеть") })
                         NavigationBarItem(tab == "profile", { tab = "profile" }, icon = { Text("◉") }, label = { Text("Профиль") })
                     }
                 }, floatingActionButton = { if (tab == "chats") FloatingActionButton(onClick = { showCreate = true }, containerColor = accent, contentColor = Color.White) { Text("＋", fontSize = 26.sp) } }) { padding ->
                     when (tab) {
+                        "network" -> Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Box(Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(accent), contentAlignment = Alignment.Center) {
+                                    Text("⇄", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Column {
+                                    Text("Децентрализованная сеть", color = ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                    Text("Связь без единого центра", color = muted, fontSize = 13.sp)
+                                }
+                            }
+                            Card(colors = CardDefaults.cardColors(containerColor = panel), shape = RoundedCornerShape(20.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text("Текущий статус", color = ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Box(Modifier.size(9.dp).clip(CircleShape).background(Color(0xFFE6A23C)))
+                                        Text("P2P-транспорт ещё не подключён", color = ink, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                    }
+                                    Text("Сейчас сообщения сохраняются только на этом телефоне. Эта версия не передаёт их другим пользователям — мы не показываем фиктивное подключение.", color = muted, fontSize = 13.sp, lineHeight = 19.sp)
+                                }
+                            }
+                            Card(colors = CardDefaults.cardColors(containerColor = panel), shape = RoundedCornerShape(20.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("Как будет работать сеть", color = ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+                                        Text("01", color = accent, fontWeight = FontWeight.Bold)
+                                        Column { Text("Поиск доступных узлов", color = ink, fontWeight = FontWeight.SemiBold); Text("Устройства смогут находить друг друга через несколько независимых точек входа, без единственного обязательного сервера.", color = muted, fontSize = 12.sp, lineHeight = 17.sp) }
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+                                        Text("02", color = accent, fontWeight = FontWeight.Bold)
+                                        Column { Text("Зашифрованная доставка", color = ink, fontWeight = FontWeight.SemiBold); Text("Промежуточные узлы будут пересылать зашифрованные пакеты, не читая содержимое сообщений.", color = muted, fontSize = 12.sp, lineHeight = 17.sp) }
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+                                        Text("03", color = accent, fontWeight = FontWeight.Bold)
+                                        Column { Text("Доставка после отключения", color = ink, fontWeight = FontWeight.SemiBold); Text("Если получатель временно офлайн, пакет сможет ждать на доступном узле и быть доставлен позже — если такой узел доступен.", color = muted, fontSize = 12.sp, lineHeight = 17.sp) }
+                                    }
+                                }
+                            }
+                            Card(colors = CardDefaults.cardColors(containerColor = if (dark) Color(0xFF252C40) else Color(0xFFEEF0FF)), shape = RoundedCornerShape(20.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("Важно", color = accent, fontWeight = FontWeight.Bold)
+                                    Text("Для связи на расстоянии устройствам нужен интернет или доступный маршрут через другие узлы. Без любого канала связи мгновенная доставка невозможна. Децентрализация и шифрование будут проверяться отдельно.", color = ink, fontSize = 12.sp, lineHeight = 18.sp)
+                                }
+                            }
+                        }
                         "profile" -> Column(Modifier.fillMaxSize().padding(padding).padding(22.dp)) {
                             Text("Профиль и настройки", color = ink, fontSize = 27.sp, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(24.dp))
@@ -414,7 +459,7 @@ private fun NdrimedaApp() {
                             Spacer(Modifier.height(24.dp))
                             HorizontalDivider(color = line)
                             Text("Beta 0.2.1 · офлайн-режим", color = muted, modifier = Modifier.padding(top = 14.dp))
-                            Text("Сообщения и записи пока доступны только на этом устройстве. Для реальной переписки нужен сервер.", color = muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                            Text("Сообщения и записи пока доступны только на этом устройстве. Синхронизация и P2P-связь ещё не реализованы.", color = muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                             Spacer(Modifier.height(24.dp))
                             OutlinedButton(onClick = { username = ""; nameDraft = ""; prefs.edit().remove("username").remove("auth_token").apply() }, modifier = Modifier.fillMaxWidth()) { Text("Выйти из аккаунта") }
                         }
@@ -423,9 +468,17 @@ private fun NdrimedaApp() {
                             LazyColumn { items(chats.filter { it.kind != "channel" && it.kind != "discussion" }, key = { it.id }) { c -> ChatRow(c, { currentId = c.id }, panel, ink, muted, line) } }
                         }
                         else -> Column(Modifier.fillMaxSize().padding(padding)) {
-                            Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 18.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) { Text("NDRIMEDA", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp); Text("Сообщения", color = ink, fontSize = 29.sp, fontWeight = FontWeight.Bold) }
-                                Text(if (dark) "☾" else "☀", Modifier.clickable { theme = if (dark) "light" else "dark"; prefs.edit().putString("theme", theme).apply() }.padding(12.dp), color = ink, fontSize = 22.sp)
+                            Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 16.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(44.dp).clip(RoundedCornerShape(15.dp)).background(accent), contentAlignment = Alignment.Center) {
+                                    Text("N", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
+                                }
+                                Spacer(Modifier.width(11.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("NDRIMEDA", color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                                    Text("Сообщения", color = ink, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                                    Text("Чаты, группы и каналы", color = muted, fontSize = 11.sp)
+                                }
+                                Text(if (dark) "☾" else "☀", Modifier.clip(CircleShape).clickable { theme = if (dark) "light" else "dark"; prefs.edit().putString("theme", theme).apply() }.padding(12.dp), color = ink, fontSize = 22.sp)
                             }
                             OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), placeholder = { Text("Поиск по чатам") }, singleLine = true, shape = RoundedCornerShape(16.dp))
                             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
