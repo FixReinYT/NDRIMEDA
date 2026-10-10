@@ -120,6 +120,7 @@ private fun NdrimedaApp() {
     var tab by remember { mutableStateOf("chats") }
     var currentId by remember { mutableStateOf<String?>(null) }
     var search by remember { mutableStateOf("") }
+    var pinnedChats by remember { mutableStateOf(prefs.getStringSet("pinned_chats", emptySet())?.toSet() ?: emptySet()) }
     var draft by remember { mutableStateOf("") }
     var theme by remember { mutableStateOf(prefs.getString("theme", "light") ?: "light") }
     var showCreate by remember { mutableStateOf(false) }
@@ -179,7 +180,9 @@ private fun NdrimedaApp() {
     val line = if (dark) Color(0xFF303746) else LightLine
     val accent = if (dark) Color(0xFF8B9AFF) else Accent
     val scheme = if (dark) darkColorScheme(primary = accent, background = bg, surface = panel, onSurface = ink, onBackground = ink) else lightColorScheme(primary = accent, background = bg, surface = panel, onSurface = ink, onBackground = ink)
-    val selected = chats.firstOrNull { it.id == currentId }
+    val savedChat = Chat("saved_messages", "Избранное", "Сохранённые сообщения", "", "★", "person", 4)
+    val displayChats = if (chats.any { it.id == savedChat.id }) chats else chats + savedChat
+    val selected = displayChats.firstOrNull { it.id == currentId }
 
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted && currentId != null) {
@@ -332,8 +335,19 @@ private fun NdrimedaApp() {
                                             Text("Голосовое сообщение", color = if (m.mine) Color.White else ink)
                                         }
                                     } else Text(m.text, color = if (m.mine) Color.White else ink)
-                                    Row(Modifier.padding(top = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Row(Modifier.fillMaxWidth().padding(top = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Text(m.time, color = if (m.mine) Color(0xFFDDE2FF) else muted, fontSize = 10.sp)
+                                        Spacer(Modifier.weight(1f))
+                                        Text("☆", color = if (m.mine) Color(0xFFDDE2FF) else accent, fontSize = 17.sp,
+                                            modifier = Modifier.clickable {
+                                                val saved = messages["saved_messages"].orEmpty()
+                                                if (saved.none { it.id == m.id }) {
+                                                    val copy = m.copy(id = "saved_${m.id}", author = if (m.mine) username else m.author, mine = true, parentId = selected.id)
+                                                    saveMessages(messages + ("saved_messages" to (saved + copy)))
+                                                    if (chats.none { it.id == "saved_messages" }) saveChats(chats + savedChat)
+                                                    status = "Сообщение сохранено в «Избранное»"
+                                                } else status = "Это сообщение уже в избранном"
+                                            })
                                         if (selected.kind == "channel" && m.mine) {
                                             Spacer(Modifier.width(10.dp))
                                             Text("Обсудить", color = if (m.mine) Color(0xFFDDE2FF) else accent, fontSize = 10.sp, modifier = Modifier.clickable {
@@ -419,9 +433,17 @@ private fun NdrimedaApp() {
                                 FilterChip(search == "#group", { search = "#group" }, label = { Text("Группы") })
                                 FilterChip(search == "#channel", { search = "#channel" }, label = { Text("Каналы") })
                             }
-                            val filtered = chats.filter { c -> search.isBlank() || (search == "#group" && c.kind == "group") || (search == "#channel" && c.kind == "channel") || (search != "#group" && search != "#channel" && (c.name.contains(search, true) || c.preview.contains(search, true))) }
+                            val filtered = displayChats.filter { c -> search.isBlank() || (search == "#group" && c.kind == "group") || (search == "#channel" && c.kind == "channel") || (search != "#group" && search != "#channel" && (c.name.contains(search, true) || c.preview.contains(search, true))) }
+                                .sortedWith(compareByDescending<Chat> { it.id in pinnedChats }.thenByDescending { it.time })
                             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 18.dp)) {
-                                items(filtered, key = { it.id }) { c -> ChatRow(c, { currentId = c.id }, panel, ink, muted, line) }
+                                items(filtered, key = { it.id }) { c ->
+                                    ChatRow(c, { currentId = c.id }, panel, ink, muted, line,
+                                        pinned = c.id in pinnedChats,
+                                        onPin = {
+                                            pinnedChats = if (c.id in pinnedChats) pinnedChats - c.id else pinnedChats + c.id
+                                            prefs.edit().putStringSet("pinned_chats", pinnedChats).apply()
+                                        })
+                                }
                                 if (filtered.isEmpty()) item { Text("Пока пусто. Нажми +, чтобы создать чат, группу или канал.", color = muted, modifier = Modifier.padding(24.dp)) }
                             }
                         }
@@ -456,7 +478,7 @@ private fun NdrimedaApp() {
 }
 
 @Composable
-private fun ChatRow(c: Chat, onClick: () -> Unit, panel: Color, ink: Color, muted: Color, line: Color) {
+private fun ChatRow(c: Chat, onClick: () -> Unit, panel: Color, ink: Color, muted: Color, line: Color, pinned: Boolean = false, onPin: (() -> Unit)? = null) {
     Column {
         Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(52.dp).clip(CircleShape).background(AvatarColors[c.color % AvatarColors.size]), contentAlignment = Alignment.Center) {
@@ -467,6 +489,9 @@ private fun ChatRow(c: Chat, onClick: () -> Unit, panel: Color, ink: Color, mute
                 Text(c.name, color = ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(4.dp))
                 Text(c.preview, color = muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (onPin != null) {
+                Text(if (pinned) "★" else "☆", Modifier.clickable(onClick = onPin).padding(horizontal = 8.dp), color = if (pinned) Accent else muted, fontSize = 20.sp)
             }
             Text(c.time, color = muted, fontSize = 11.sp)
         }
