@@ -103,9 +103,20 @@ private const val API_BASE_URL = "https://ndrimeda-api.onrender.com"
 @Composable
 private fun NdrimedaApp() {
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("ndrimeda_beta", Context.MODE_PRIVATE) }
+    val prefs = remember {
+        context.getSharedPreferences("ndrimeda_beta", Context.MODE_PRIVATE).also { p ->
+            if (!p.getBoolean("beta20_cleaned", false)) {
+                p.edit().remove("username").remove("messages").remove("custom_chats").remove("auth_token").putBoolean("beta20_cleaned", true).apply()
+            }
+        }
+    }
     var username by remember { mutableStateOf(prefs.getString("username", "") ?: "") }
     var nameDraft by remember { mutableStateOf("") }
+    var passwordDraft by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var authMode by remember { mutableStateOf("register") }
+    var authLoading by remember { mutableStateOf(false) }
+    var authError by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf("chats") }
     var currentId by remember { mutableStateOf<String?>(null) }
     var search by remember { mutableStateOf("") }
@@ -186,18 +197,62 @@ private fun NdrimedaApp() {
     MaterialTheme(colorScheme = scheme) {
         Surface(Modifier.fillMaxSize(), color = bg) {
             if (username.isBlank()) {
-                Column(Modifier.fillMaxSize().padding(26.dp), verticalArrangement = Arrangement.Center) {
-                    Box(Modifier.size(66.dp).clip(RoundedCornerShape(22.dp)).background(accent), contentAlignment = Alignment.Center) { Text("N", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold) }
-                    Spacer(Modifier.height(26.dp))
+                Column(Modifier.fillMaxSize().padding(horizontal = 26.dp), verticalArrangement = Arrangement.Center) {
+                    Box(Modifier.size(62.dp).clip(RoundedCornerShape(20.dp)).background(accent), contentAlignment = Alignment.Center) { Text("N", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold) }
+                    Spacer(Modifier.height(20.dp))
                     Text("NDRIMEDA", color = accent, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                    Text("Общение без лишнего.", color = ink, fontSize = 29.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(10.dp))
-                    Text("Создавай локальные группы и каналы, записывай голосовые сообщения и настраивай тему.", color = muted)
-                    Spacer(Modifier.height(24.dp))
-                    OutlinedTextField(nameDraft, { nameDraft = it.take(24) }, Modifier.fillMaxWidth(), label = { Text("Твоё имя") }, singleLine = true)
-                    Spacer(Modifier.height(12.dp))
-                    Button(onClick = { username = nameDraft.trim(); prefs.edit().putString("username", username).apply() }, enabled = nameDraft.trim().length >= 2, modifier = Modifier.fillMaxWidth()) { Text("Продолжить") }
-                    Text("ЗАКРЫТАЯ БЕТА · ЛОКАЛЬНЫЙ РЕЖИМ", color = muted, fontSize = 10.sp, modifier = Modifier.padding(top = 16.dp))
+                    Text(if (authMode == "register") "Создать аккаунт" else "С возвращением", color = ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Регистрация и вход по логину и паролю.", color = muted)
+                    Spacer(Modifier.height(20.dp))
+                    OutlinedTextField(nameDraft, { nameDraft = it.filter { ch -> ch.isLetterOrDigit() || ch == '_' || ch == '.' || ch == '-' }.take(32); authError = "" }, Modifier.fillMaxWidth(), label = { Text("Логин") }, supportingText = { Text("3–32 символа: латинские буквы, цифры, . _ -") }, singleLine = true)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(passwordDraft, { passwordDraft = it.take(128); authError = "" }, Modifier.fillMaxWidth(), label = { Text("Пароль") }, singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+                    if (authMode == "register") {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(confirmPassword, { confirmPassword = it.take(128); authError = "" }, Modifier.fillMaxWidth(), label = { Text("Повтори пароль") }, singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+                    }
+                    if (authError.isNotBlank()) Text(authError, color = Color(0xFFE34E5D), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                    Spacer(Modifier.height(14.dp))
+                    Button(onClick = {
+                        when {
+                            nameDraft.trim().length !in 3..32 -> authError = "Логин должен содержать от 3 до 32 символов."
+                            passwordDraft.length < 8 -> authError = "Пароль должен содержать минимум 8 символов."
+                            authMode == "register" && passwordDraft != confirmPassword -> authError = "Пароли не совпадают."
+                            else -> {
+                                authLoading = true
+                                authError = ""
+                                val endpoint = if (authMode == "register") "/auth/register" else "/auth/login"
+                                Thread {
+                                    try {
+                                        val result = authRequest(endpoint, nameDraft.trim(), passwordDraft)
+                                        val token = result.optString("access_token")
+                                        val returnedUser = result.optJSONObject("user")?.optString("username").orEmpty().ifBlank { nameDraft.trim() }
+                                        (context as? ComponentActivity)?.runOnUiThread {
+                                            username = returnedUser
+                                            prefs.edit().putString("username", returnedUser).putString("auth_token", token).apply()
+                                            passwordDraft = ""
+                                            confirmPassword = ""
+                                            authLoading = false
+                                            authError = ""
+                                        }
+                                    } catch (e: Exception) {
+                                        (context as? ComponentActivity)?.runOnUiThread {
+                                            authLoading = false
+                                            authError = e.message ?: "Не удалось связаться с сервером."
+                                        }
+                                    }
+                                }.start()
+                            }
+                        }
+                    }, enabled = !authLoading, modifier = Modifier.fillMaxWidth()) {
+                        if (authLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                        else Text(if (authMode == "register") "Зарегистрироваться" else "Войти")
+                    }
+                    TextButton(onClick = { authMode = if (authMode == "register") "login" else "register"; authError = ""; confirmPassword = "" }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (authMode == "register") "Уже есть аккаунт? Войти" else "Нет аккаунта? Зарегистрироваться")
+                    }
+                    Text("Публичная бета · серверная регистрация", color = muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
                 }
             } else if (discussionParent != null) {
                 Column(Modifier.fillMaxSize().background(bg)) {
