@@ -1,0 +1,33 @@
+name: NDRIMEDA Server Health Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/server-health.yml"
+  workflow_dispatch:
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check deployed API health endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://ndrimeda-api.onrender.com/health"
+          echo "Checking $URL"
+          for attempt in 1 2 3; do
+            code="$(curl --silent --show-error --location --max-time 40 --output /tmp/health.json --write-out '%{http_code}' "$URL" || true)"
+            echo "Attempt $attempt: HTTP $code"
+            if [ "$code" = "200" ]; then
+              cat /tmp/health.json
+              echo
+              exit 0
+            fi
+            cat /tmp/health.json 2>/dev/null || true
+            echo
+            sleep 15
+          done
+          echo "::error::NDRIMEDA API health check failed after 3 attempts."
+          exit 1
