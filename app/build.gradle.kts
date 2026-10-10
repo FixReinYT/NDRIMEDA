@@ -7,6 +7,7 @@ plugins {
 android {
     namespace = "com.ndrimeda"
     compileSdk = 35
+    buildFeatures { compose = true }
     defaultConfig {
         applicationId = "com.ndrimeda"
         minSdk = 26
