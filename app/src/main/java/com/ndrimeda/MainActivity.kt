@@ -76,13 +76,9 @@ private data class Message(
     val id: String, val author: String, val text: String, val time: String,
     val mine: Boolean, val voice: String = "", val parentId: String = ""
 )
-private val Defaults = listOf(
-    Chat("alex", "Алексей", "Скинул тебе файл", "12:42", "А", color = 0),
-    Chat("masha", "Маша", "Ты сегодня будешь?", "12:18", "М", color = 1),
-    Chat("team", "Команда NDRIMEDA", "Илья: сборка готова", "11:56", "N", "group", 2),
-    Chat("danya", "Даня", "ахах, понял", "Вчера", "Д", color = 3),
-    Chat("saved", "Избранное", "Заметки и сообщения для себя", "Пн", "★", color = 4)
-)
+private val Defaults = emptyList<Chat>()
+
+private const val API_BASE_URL = "https://ndrimeda-api.onrender.com"
 
 @Composable
 private fun NdrimedaApp() {
