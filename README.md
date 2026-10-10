@@ -1,32 +1,41 @@
 # NDRIMEDA
 
-NDRIMEDA is a native Android app built with Kotlin and Jetpack Compose.
+NDRIMEDA is a native Android messenger prototype built with Kotlin and Jetpack Compose.
 
-## Beta 20 status
+## Current beta status
 
-- The app now has a registration/login screen that calls the NDRIMEDA API.
-- Registration requires a unique username and a password of at least 8 characters.
-- Test conversations and the previous local profile are cleared once on first launch of Beta 20.
-- Chat lists start empty; users create their own local chats and channels.
-- Local chat messages, voice notes, channel posts, and comments are still stored on the device and are not synchronized between accounts yet.
-- The app is an early public beta and must not be used for sensitive conversations.
+- Native Android interface with local chats, groups, channels, voice notes, comments, pinned chats, saved messages, and light/dark themes.
+- Offline entry is available without account registration.
+- Messages and voice recordings are currently stored locally on the device.
+- The Network screen documents the intended decentralized design and explicitly indicates that peer-to-peer transport is not yet implemented.
+- Do not use this prototype for sensitive conversations or treat it as a production messenger.
 
-## Server deployment
+## Decentralized networking goal
 
-The API is a FastAPI prototype in `backend/`. `render.yaml` defines the Render web service, and the service expects a PostgreSQL connection string in the `DATABASE_URL` environment variable. Before registration can work:
+The project aims to support long-distance messaging without dependence on one mandatory central server. This is a design goal, not a current feature.
 
-1. Deploy the repository using the Render blueprint.
-2. Set `DATABASE_URL` to a valid PostgreSQL connection string (the current blueprint expects an external Neon database).
-3. Confirm that `https://ndrimeda-api.onrender.com/health` returns a JSON health response. If Render assigns a different hostname, update `API_BASE_URL` in `app/src/main/java/com/ndrimeda/MainActivity.kt` and rebuild.
+The implementation must solve peer discovery, NAT traversal, relay/forwarding, offline delivery, abuse resistance, key verification, and end-to-end encryption. Decentralization does not remove the need for an available network path: two distant devices with no internet and no route through other nodes cannot exchange messages instantly.
 
-GitHub Actions builds a debug APK for beta testing. A successful build does not itself deploy or host the API.
+A suitable staged plan is:
 
-## Download
+1. Define a transport-independent message envelope and identity/key model.
+2. Implement peer discovery and connection establishment using multiple independent entry points rather than one hard-coded endpoint.
+3. Add encrypted store-and-forward between reachable peers/relay nodes.
+4. Add independently reviewed end-to-end encryption and identity verification.
+5. Test across real devices, mobile carriers, NAT types, and offline/reconnect scenarios.
+6. Conduct security review before any public claim of private or reliable messaging.
 
-Open the repository's **Releases** page and download `app-debug.apk` from the latest beta release. Android may warn that the debug APK is not distributed through Google Play.
+## Existing backend prototype
+
+The backend/ directory contains an early FastAPI API prototype and render.yaml describes a hosted deployment. The existing API is not a decentralized transport and is not required for local-only use. Registration/login will only work if the API is deployed and configured.
+
+## Build and download
+
+GitHub Actions builds a debug APK for beta testing and publishes it under Releases. A successful APK build verifies compilation only; it does not prove that remote messaging or peer-to-peer networking works.
 
 ## Current limitations
 
-- Online account registration and login require the API and PostgreSQL to be deployed and configured.
-- Chats and messages are still local to each device; shared one-to-one and group messaging, notifications, account recovery, and end-to-end encryption are not implemented.
-- The backend is a prototype and needs additional security review and integration testing before it should be treated as a production messenger.
+- No real cross-device messaging or P2P transport is implemented yet.
+- Local chats are not synchronized between accounts or devices.
+- End-to-end encryption, notifications, account recovery, and production-grade anti-abuse protections are not implemented.
+- The prototype requires functional testing and independent security review before production use.
