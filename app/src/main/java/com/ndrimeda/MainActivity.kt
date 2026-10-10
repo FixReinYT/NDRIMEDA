@@ -205,7 +205,7 @@ private fun NdrimedaApp() {
                     Spacer(Modifier.height(8.dp))
                     Text("Регистрация и вход по логину и паролю.", color = muted)
                     Spacer(Modifier.height(20.dp))
-                    OutlinedTextField(nameDraft, { nameDraft = it.filter { ch -> ch.isLetterOrDigit() || ch == '_' || ch == '.' || ch == '-' }.take(32); authError = "" }, Modifier.fillMaxWidth(), label = { Text("Логин") }, supportingText = { Text("3–32 символа: латинские буквы, цифры, . _ -") }, singleLine = true)
+                    OutlinedTextField(nameDraft, { nameDraft = it.filter { ch -> ch in 'a'..'z' || ch in 'A'..'Z' || ch in '0'..'9' || ch == '_' || ch == '.' || ch == '-' }.take(32); authError = "" }, Modifier.fillMaxWidth(), label = { Text("Логин") }, supportingText = { Text("3–32 символа: латинские буквы, цифры, . _ -") }, singleLine = true)
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(passwordDraft, { passwordDraft = it.take(128); authError = "" }, Modifier.fillMaxWidth(), label = { Text("Пароль") }, singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
                     if (authMode == "register") {
@@ -391,7 +391,7 @@ private fun NdrimedaApp() {
                             Text("Beta 0.2.0 · офлайн-режим", color = muted, modifier = Modifier.padding(top = 14.dp))
                             Text("Сообщения и записи пока доступны только на этом устройстве. Для реальной переписки нужен сервер.", color = muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                             Spacer(Modifier.height(24.dp))
-                            OutlinedButton(onClick = { username = ""; nameDraft = ""; prefs.edit().remove("username").apply() }, modifier = Modifier.fillMaxWidth()) { Text("Сменить профиль") }
+                            OutlinedButton(onClick = { username = ""; nameDraft = ""; prefs.edit().remove("username").remove("auth_token").apply() }, modifier = Modifier.fillMaxWidth()) { Text("Выйти из аккаунта") }
                         }
                         "contacts" -> Column(Modifier.fillMaxSize().padding(padding).padding(20.dp)) {
                             Text("Контакты", color = ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
