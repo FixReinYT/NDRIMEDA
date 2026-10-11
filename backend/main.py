@@ -6,12 +6,10 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 from pwdlib import PasswordHash
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, create_engine, select
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, create_engine, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://ndrimeda:local-dev-change-me@db:5432/ndrimeda")
-# Neon and many managed PostgreSQL providers supply postgresql:// URLs.
-# Force the installed psycopg 3 driver instead of SQLAlchemy's psycopg2 default.
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len("postgres://"):]
 elif DATABASE_URL.startswith("postgresql://"):
@@ -21,7 +19,7 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 hasher = PasswordHash.recommended()
 bearer = HTTPBearer(auto_error=False)
-app = FastAPI(title="NDRIMEDA API", version="0.1.0")
+app = FastAPI(title="NDRIMEDA Relay API", version="0.2.0")
 
 class Base(DeclarativeBase):
     pass
@@ -37,10 +35,15 @@ class Message(Base):
     __tablename__ = "messages"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    recipient_username: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
 
 Base.metadata.create_all(bind=engine)
+# Upgrade databases created by older beta versions without deleting existing messages.
+with engine.begin() as connection:
+    connection.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS recipient_username VARCHAR(32)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_messages_recipient_username ON messages (recipient_username)"))
 
 class Credentials(BaseModel):
     username: str = Field(min_length=3, max_length=32, pattern=r"^[A-Za-z0-9_.-]+$")
@@ -48,6 +51,7 @@ class Credentials(BaseModel):
 
 class MessageIn(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
+    recipient_username: str | None = Field(default=None, min_length=3, max_length=32, pattern=r"^[A-Za-z0-9_.-]+$")
 
 def get_db():
     with SessionLocal() as db:
@@ -72,7 +76,7 @@ def signed_in(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "ndrimeda-api"}
+    return {"status": "ok", "service": "ndrimeda-relay", "features": ["account-auth", "direct-inbox"]}
 
 @app.post("/auth/register", status_code=201)
 def register(data: Credentials, db: Session = Depends(get_db)):
@@ -91,24 +95,42 @@ def register(data: Credentials, db: Session = Depends(get_db)):
 @app.post("/auth/login")
 def login(data: Credentials, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.username == data.username))
-    if user is None or not hasher.verify(data.password, user.password_hash):
+    if user is None or not hasher.verify(user.password_hash, data.password):
         raise HTTPException(status_code=401, detail="Incorrect username or password")
     return issue_token(user)
 
 @app.get("/messages")
 def list_messages(limit: int = 50, user: User = Depends(signed_in), db: Session = Depends(get_db)):
     limit = max(1, min(limit, 100))
-    rows = db.execute(select(Message, User.username).join(User, Message.user_id == User.id).where(Message.user_id == user.id).order_by(Message.id.desc()).limit(limit)).all()
+    rows = db.execute(select(Message, User.username).join(User, Message.user_id == User.id)
+        .where(Message.user_id == user.id).order_by(Message.id.desc()).limit(limit)).all()
     rows.reverse()
-    return [{"id": m.id, "username": name, "text": m.text, "created_at": m.created_at.isoformat()} for m, name in rows]
+    return [{"id": m.id, "username": name, "recipient": m.recipient_username,
+             "text": m.text, "created_at": m.created_at.isoformat()} for m, name in rows]
+
+@app.get("/inbox")
+def inbox(limit: int = 100, user: User = Depends(signed_in), db: Session = Depends(get_db)):
+    limit = max(1, min(limit, 100))
+    rows = db.execute(select(Message, User.username).join(User, Message.user_id == User.id)
+        .where(Message.recipient_username == user.username)
+        .order_by(Message.id.desc()).limit(limit)).all()
+    rows.reverse()
+    return [{"id": m.id, "sender": name, "recipient": user.username,
+             "text": m.text, "created_at": m.created_at.isoformat()} for m, name in rows]
 
 @app.post("/messages", status_code=201)
 def send_message(data: MessageIn, user: User = Depends(signed_in), db: Session = Depends(get_db)):
     body = data.text.strip()
     if not body:
         raise HTTPException(status_code=422, detail="Message cannot be empty")
-    item = Message(user_id=user.id, text=body)
+    recipient = data.recipient_username.strip() if data.recipient_username else None
+    if recipient and recipient.casefold() == user.username.casefold():
+        raise HTTPException(status_code=400, detail="Cannot send a direct message to yourself")
+    if recipient and db.scalar(select(User).where(User.username == recipient)) is None:
+        raise HTTPException(status_code=404, detail="Recipient account not found on this relay")
+    item = Message(user_id=user.id, recipient_username=recipient, text=body)
     db.add(item)
     db.commit()
     db.refresh(item)
-    return {"id": item.id, "username": user.username, "text": item.text, "created_at": item.created_at.isoformat()}
+    return {"id": item.id, "username": user.username, "recipient": recipient,
+            "text": item.text, "created_at": item.created_at.isoformat()}
