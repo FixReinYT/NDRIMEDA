@@ -401,50 +401,7 @@ private fun NdrimedaApp() {
                     }
                 }, floatingActionButton = { if (tab == "chats") FloatingActionButton(onClick = { showCreate = true }, containerColor = accent, contentColor = Color.White) { Text("＋", fontSize = 26.sp) } }) { padding ->
                     when (tab) {
-                        "network" -> Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Box(Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(accent), contentAlignment = Alignment.Center) {
-                                    Text("⇄", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Column {
-                                    Text("Децентрализованная сеть", color = ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                    Text("Связь без единого центра", color = muted, fontSize = 13.sp)
-                                }
-                            }
-                            Card(colors = CardDefaults.cardColors(containerColor = panel), shape = RoundedCornerShape(20.dp)) {
-                                Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    Text("Текущий статус", color = ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Box(Modifier.size(9.dp).clip(CircleShape).background(Color(0xFFE6A23C)))
-                                        Text("P2P-транспорт ещё не подключён", color = ink, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                                    }
-                                    Text("Сейчас сообщения сохраняются только на этом телефоне. Эта версия не передаёт их другим пользователям — мы не показываем фиктивное подключение.", color = muted, fontSize = 13.sp, lineHeight = 19.sp)
-                                }
-                            }
-                            Card(colors = CardDefaults.cardColors(containerColor = panel), shape = RoundedCornerShape(20.dp)) {
-                                Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Text("Как будет работать сеть", color = ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-                                        Text("01", color = accent, fontWeight = FontWeight.Bold)
-                                        Column { Text("Поиск доступных узлов", color = ink, fontWeight = FontWeight.SemiBold); Text("Устройства смогут находить друг друга через несколько независимых точек входа, без единственного обязательного сервера.", color = muted, fontSize = 12.sp, lineHeight = 17.sp) }
-                                    }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-                                        Text("02", color = accent, fontWeight = FontWeight.Bold)
-                                        Column { Text("Зашифрованная доставка", color = ink, fontWeight = FontWeight.SemiBold); Text("Промежуточные узлы будут пересылать зашифрованные пакеты, не читая содержимое сообщений.", color = muted, fontSize = 12.sp, lineHeight = 17.sp) }
-                                    }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-                                        Text("03", color = accent, fontWeight = FontWeight.Bold)
-                                        Column { Text("Доставка после отключения", color = ink, fontWeight = FontWeight.SemiBold); Text("Если получатель временно офлайн, пакет сможет ждать на доступном узле и быть доставлен позже — если такой узел доступен.", color = muted, fontSize = 12.sp, lineHeight = 17.sp) }
-                                    }
-                                }
-                            }
-                            Card(colors = CardDefaults.cardColors(containerColor = if (dark) Color(0xFF252C40) else Color(0xFFEEF0FF)), shape = RoundedCornerShape(20.dp)) {
-                                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text("Важно", color = accent, fontWeight = FontWeight.Bold)
-                                    Text("Для связи на расстоянии устройствам нужен интернет или доступный маршрут через другие узлы. Без любого канала связи мгновенная доставка невозможна. Децентрализация и шифрование будут проверяться отдельно.", color = ink, fontSize = 12.sp, lineHeight = 18.sp)
-                                }
-                            }
-                        }
+                        "network" -> OfflineBluetoothPanel(dark, accent, ink, muted, panel)
                         "profile" -> Column(Modifier.fillMaxSize().padding(padding).padding(22.dp)) {
                             Text("Профиль и настройки", color = ink, fontSize = 27.sp, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(24.dp))
