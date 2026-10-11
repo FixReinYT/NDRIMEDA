@@ -37,9 +37,9 @@ jobs:
           body: |
             Public beta build of NDRIMEDA.
             This is a debug APK for testing, not a Google Play release.
-            Offline entry is available without a server.
-            Server registration/login require the API to be deployed and configured as described in README.md.
-            Chats, voice notes, channels, and comments remain local to the device in this beta.
+            Offline entry and local chat history work without a server.
+            The Network tab supports direct text messages between accounts on the same configured HTTPS relay.
+            Cross-node federation and end-to-end encryption are not implemented; do not send sensitive data.
           files: app/build/outputs/apk/debug/app-debug.apk
           prerelease: true
           make_latest: false
