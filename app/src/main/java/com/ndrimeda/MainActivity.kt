@@ -425,17 +425,20 @@ private fun NdrimedaApp() {
                             LazyColumn { items(chats.filter { it.kind != "channel" && it.kind != "discussion" }, key = { it.id }) { c -> ChatRow(c, { currentId = c.id }, panel, ink, muted, line) } }
                         }
                         else -> Column(Modifier.fillMaxSize().padding(padding)) {
-                            Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 16.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(44.dp).clip(RoundedCornerShape(15.dp)).background(accent), contentAlignment = Alignment.Center) {
-                                    Text("N", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
+                            Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(accent), contentAlignment = Alignment.Center) {
+                                    Text("N", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Black)
                                 }
-                                Spacer(Modifier.width(11.dp))
+                                Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("NDRIMEDA", color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                                    Text("Сообщения", color = ink, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                                    Text("Чаты, группы и каналы", color = muted, fontSize = 11.sp)
+                                    Text("Все чаты", color = ink, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                                 }
-                                Text(if (dark) "☾" else "☀", Modifier.clip(CircleShape).clickable { theme = if (dark) "light" else "dark"; prefs.edit().putString("theme", theme).apply() }.padding(12.dp), color = ink, fontSize = 22.sp)
+                                Surface(shape = RoundedCornerShape(14.dp), color = if (dark) Color(0xFF292F3D) else Color(0xFFEDEFFF)) {
+                                    Text("BETA", color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp))
+                                }
+                                Spacer(Modifier.width(4.dp))
+                                Text(if (dark) "☾" else "☀", Modifier.clip(CircleShape).clickable { theme = if (dark) "light" else "dark"; prefs.edit().putString("theme", theme).apply() }.padding(10.dp), color = ink, fontSize = 21.sp)
                             }
                             OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), placeholder = { Text("Поиск по чатам") }, singleLine = true, shape = RoundedCornerShape(16.dp))
                             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -489,22 +492,30 @@ private fun NdrimedaApp() {
 
 @Composable
 private fun ChatRow(c: Chat, onClick: () -> Unit, panel: Color, ink: Color, muted: Color, line: Color, pinned: Boolean = false, onPin: (() -> Unit)? = null) {
-    Column {
-        Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(52.dp).clip(CircleShape).background(AvatarColors[c.color % AvatarColors.size]), contentAlignment = Alignment.Center) {
-                Text(when (c.kind) { "channel" -> "◉"; "group" -> "♧"; "discussion" -> "☷"; else -> c.initials }, color = ink, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(c.name, color = ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(4.dp))
-                Text(c.preview, color = muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            if (onPin != null) {
-                Text(if (pinned) "★" else "☆", Modifier.clickable(onClick = onPin).padding(horizontal = 8.dp), color = if (pinned) Accent else muted, fontSize = 20.sp)
-            }
-            Text(c.time, color = muted, fontSize = 11.sp)
+    Row(
+        Modifier.fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 5.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(panel)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(52.dp).clip(RoundedCornerShape(17.dp)).background(AvatarColors[c.color % AvatarColors.size]), contentAlignment = Alignment.Center) {
+            Text(when (c.kind) { "channel" -> "◉"; "group" -> "••"; "discussion" -> "↳"; else -> c.initials.take(2) }, color = ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
         }
-        HorizontalDivider(color = line, thickness = 0.7.dp, modifier = Modifier.padding(start = 82.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(c.name, color = ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(5.dp))
+            Text(c.preview, color = muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.width(8.dp))
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text(c.time.ifBlank { if (c.kind == "channel") "КАНАЛ" else "" }, color = muted, fontSize = 10.sp, maxLines = 1)
+            if (onPin != null) {
+                Text(if (pinned) "★" else "☆", Modifier.clickable(onClick = onPin).padding(horizontal = 3.dp), color = if (pinned) Accent else muted, fontSize = 19.sp)
+            }
+        }
     }
 }
