@@ -396,12 +396,12 @@ private fun NdrimedaApp() {
                     NavigationBar(containerColor = panel) {
                         NavigationBarItem(tab == "chats", { tab = "chats" }, icon = { Text("▤") }, label = { Text("Чаты") })
                         NavigationBarItem(tab == "contacts", { tab = "contacts" }, icon = { Text("♙") }, label = { Text("Контакты") })
-                        NavigationBarItem(tab == "network", { tab = "network" }, icon = { Text("⇄") }, label = { Text("Сеть") })
+                        NavigationBarItem(tab == "network", { tab = "network" }, icon = { Text("ᛒ") }, label = { Text("Офлайн") })
                         NavigationBarItem(tab == "profile", { tab = "profile" }, icon = { Text("◉") }, label = { Text("Профиль") })
                     }
                 }, floatingActionButton = { if (tab == "chats") FloatingActionButton(onClick = { showCreate = true }, containerColor = accent, contentColor = Color.White) { Text("＋", fontSize = 26.sp) } }) { padding ->
                     when (tab) {
-                        "network" -> OfflineBluetoothPanel(dark, accent, ink, muted, panel)
+                        "network" -> Box(Modifier.fillMaxSize().padding(padding)) { OfflineBluetoothPanel(dark, accent, ink, muted, panel) }
                         "profile" -> Column(Modifier.fillMaxSize().padding(padding).padding(22.dp)) {
                             Text("Профиль и настройки", color = ink, fontSize = 27.sp, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(24.dp))
@@ -415,8 +415,8 @@ private fun NdrimedaApp() {
                             Text("Настройка сохраняется после перезапуска.", color = muted, fontSize = 12.sp)
                             Spacer(Modifier.height(24.dp))
                             HorizontalDivider(color = line)
-                            Text("Beta 0.2.1 · офлайн-режим", color = muted, modifier = Modifier.padding(top = 14.dp))
-                            Text("Сообщения и записи пока доступны только на этом устройстве. Синхронизация и P2P-связь ещё не реализованы.", color = muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                            Text("Beta · офлайн-режим", color = muted, modifier = Modifier.padding(top = 14.dp))
+                            Text("Локальные чаты хранятся на телефоне. Вкладка «Офлайн» позволяет подключить второй телефон по Bluetooth без интернета; это отдельный режим связи на близком расстоянии.", color = muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                             Spacer(Modifier.height(24.dp))
                             OutlinedButton(onClick = { username = ""; nameDraft = ""; prefs.edit().remove("username").remove("auth_token").apply() }, modifier = Modifier.fillMaxWidth()) { Text("Выйти из аккаунта") }
                         }
