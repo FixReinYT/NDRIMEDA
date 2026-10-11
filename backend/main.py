@@ -146,7 +146,7 @@ def inbox(limit: int = 100, user: User = Depends(signed_in), db: Session = Depen
              "text": m.text, "created_at": m.created_at.isoformat()} for m, name in rows]
 
 @app.post("/messages", status_code=201)
-def send_message(data: MessageIn, user: User = Depends(signed_in), db: Session = Depends(get_db)):
+async def send_message(data: MessageIn, user: User = Depends(signed_in), db: Session = Depends(get_db)):
     body = data.text.strip()
     if not body:
         raise HTTPException(status_code=422, detail="Message cannot be empty")
