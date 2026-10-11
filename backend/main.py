@@ -48,6 +48,7 @@ Base.metadata.create_all(bind=engine)
 # Upgrade databases created by older beta versions without deleting existing messages.
 with engine.begin() as connection:
     connection.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS recipient_username VARCHAR(300)"))
+    connection.execute(text("ALTER TABLE messages ALTER COLUMN recipient_username TYPE VARCHAR(300)"))
     connection.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_label VARCHAR(300)"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_messages_recipient_username ON messages (recipient_username)"))
 
