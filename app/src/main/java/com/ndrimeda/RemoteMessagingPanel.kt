@@ -77,7 +77,7 @@ fun RemoteMessagingPanel(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Сообщения через интернет", color = ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text("Прямые сообщения по логину через relay-узел. Не Bluetooth.", color = muted, fontSize = 13.sp)
+            Text("Общение через интернет между аккаунтами на доверенных независимых узлах.", color = muted, fontSize = 13.sp)
         }
 
         Card(colors = CardDefaults.cardColors(containerColor = panel), shape = RoundedCornerShape(20.dp)) {
@@ -134,8 +134,9 @@ fun RemoteMessagingPanel(
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Новое сообщение", color = ink, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(
-                        value = recipient, onValueChange = { recipient = it.filter { c -> c.isLetterOrDigit() || c in "_.-" }.take(32) },
-                        modifier = Modifier.fillMaxWidth(), label = { Text("Логин получателя") },
+                        value = recipient, onValueChange = { recipient = it.filter { c -> c.isLetterOrDigit() || c in "_.-@" }.take(300) },
+                        modifier = Modifier.fillMaxWidth(), label = { Text("Адрес: логин или логин@узел.домен") },
+                        supportingText = { Text("Для другого узла: username@example.org. Оба узла должны настроить взаимное доверие.") },
                         singleLine = true, shape = RoundedCornerShape(14.dp)
                     )
                     OutlinedTextField(
@@ -154,7 +155,7 @@ fun RemoteMessagingPanel(
                                 mainHandler.post {
                                     sent = (sent + item).takeLast(100)
                                     draft = ""
-                                    status = "Отправлено на узел для доставки пользователю @$to."
+                                    status = if (to.contains("@")) "Передано на независимый узел для доставки $to." else "Отправлено на узел для доставки пользователю @$to."
                                     busy = false
                                 }
                             }
@@ -179,7 +180,7 @@ fun RemoteMessagingPanel(
             items((inbox.map { it.copy(text = it.text, recipient = "Вы", sender = it.sender) } + sent).takeLast(100).reversed()) { item ->
                 Card(colors = CardDefaults.cardColors(containerColor = panel), shape = RoundedCornerShape(16.dp)) {
                     Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(if (item.sender == account) "Вы → @${item.recipient}" else "@${item.sender} → вам", color = accent, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                        Text(if (item.sender == account) "Вы → ${item.recipient}" else "${item.sender} → вам", color = accent, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                         Text(item.text, color = ink)
                         Text(item.createdAt, color = muted, fontSize = 10.sp)
                     }
@@ -187,7 +188,7 @@ fun RemoteMessagingPanel(
             }
         }
         Text(
-            "Ограничение беты: аккаунты и доставка пока существуют в пределах одного узла. Узел хранит текст сообщений; E2EE и федерация между независимыми узлами ещё не реализованы. Не отправляй конфиденциальные данные.",
+            "Федерация работает только между узлами, которые явно настроили взаимное доверие. Узлы хранят текст сообщений; E2EE ещё нет. Не отправляй конфиденциальные данные.",
             color = muted, fontSize = 11.sp
         )
     }
