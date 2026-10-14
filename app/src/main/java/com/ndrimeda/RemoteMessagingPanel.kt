@@ -1,7 +1,6 @@
 package com.ndrimeda
 
-import android.app.Activity
-import android.content.Context
+import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.foundation.background
@@ -14,12 +13,21 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 private const val DEFAULT_RELAY = "https://ndrimeda-api.onrender.com"
+
+private data class NetworkLine(
+    val key: String,
+    val sender: String,
+    val recipient: String,
+    val text: String,
+    val createdAt: String,
+    val outgoing: Boolean
+)
 
 @Composable
 fun RemoteMessagingPanel(
@@ -28,168 +36,242 @@ fun RemoteMessagingPanel(
     ink: Color,
     muted: Color,
     panel: Color,
-    prefs: android.content.SharedPreferences,
+    prefs: SharedPreferences,
     localUsername: String
 ) {
-    val context = LocalContext.current
-    val activity = context as? Activity
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     var relay by remember { mutableStateOf(prefs.getString("relay_url", DEFAULT_RELAY) ?: DEFAULT_RELAY) }
     var account by remember { mutableStateOf(prefs.getString("username", localUsername) ?: localUsername) }
     var password by remember { mutableStateOf("") }
     var registerMode by remember { mutableStateOf(true) }
     var token by remember { mutableStateOf(prefs.getString("auth_token", "") ?: "") }
-    var recipient by remember { mutableStateOf("") }
-    var draft by remember { mutableStateOf("") }
-    var inbox by remember { mutableStateOf<List<RemoteMessage>>(emptyList()) }
-    var sent by remember { mutableStateOf<List<RemoteMessage>>(emptyList()) }
+    var recipient by remember { mutableStateOf(prefs.getString("network_recipient", "") ?: "") }
+    var draft by remember { mutableStateOf(prefs.getString("network_draft", "") ?: "") }
+    var timeline by remember { mutableStateOf<List<NetworkLine>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf(if (token.isBlank()) "Войди или создай аккаунт на выбранном узле." else "Подключение не проверено. Обнови входящие.") }
+    var status by remember { mutableStateOf(if (token.isBlank()) "Создай аккаунт или войди, чтобы общаться с людьми." else "Подключаюсь к серверу…") }
 
-    fun runNetwork(action: () -> Unit) {
+    fun refresh() {
+        if (token.isBlank()) {
+            status = "Сначала войди в аккаунт."
+            return
+        }
         if (busy) return
         busy = true
-        status = "Подключение…"
+        status = "Обновляю переписку…"
         Thread {
             try {
-                action()
+                val sentMessages = NdrimedaApi.messages(relay, token)
+                val receivedMessages = NdrimedaApi.inbox(relay, token)
+                val lines = sentMessages.map {
+                    NetworkLine("sent_${it.id}", it.username, it.recipient ?: "общая лента", it.text, it.createdAt, true)
+                } + receivedMessages.map {
+                    NetworkLine("received_${it.id}", it.sender, account, it.text, it.createdAt, false)
+                }
+                mainHandler.post {
+                    timeline = lines.sortedBy { it.createdAt }.takeLast(200)
+                    status = "Синхронизация завершена · сообщений: ${lines.size}"
+                    busy = false
+                }
             } catch (e: Exception) {
-                mainHandler.post { status = e.message?.take(180) ?: "Ошибка соединения"; busy = false }
+                mainHandler.post {
+                    status = e.message?.take(180) ?: "Не удалось подключиться. Проверь интернет."
+                    busy = false
+                }
             }
         }.start()
     }
 
-    fun refreshInbox() {
-        if (token.isBlank()) { status = "Сначала войди на узел."; return }
-        runNetwork {
-            val fetched = NdrimedaApi.inbox(relay, token)
-            mainHandler.post {
-                inbox = fetched
-                status = "Подключено к узлу. Входящих: ${fetched.size}"
-                busy = false
-            }
-        }
+    LaunchedEffect(token, relay) {
+        if (token.isNotBlank()) refresh()
     }
 
     Column(
-        Modifier.fillMaxSize().background(if (dark) Color(0xFF11141B) else Color(0xFFF7F8FC)).padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        Modifier.fillMaxSize()
+            .background(if (dark) Color(0xFF11141B) else Color(0xFFF7F8FC))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Сообщения через интернет", color = ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text("Общение через интернет между аккаунтами на доверенных независимых узлах.", color = muted, fontSize = 13.sp)
-        }
+        Text("Личные сообщения", color = ink, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Text("Твой юзернейм: @${account.ifBlank { localUsername }}", color = accent, fontWeight = FontWeight.SemiBold)
+        Text(
+            "Чтобы писать на расстоянии, у обоих пользователей должен быть аккаунт на одном сервере и интернет. Без интернета сообщения не доставляются; черновик сохранится на телефоне.",
+            color = muted, fontSize = 12.sp
+        )
 
-        Card(colors = CardDefaults.cardColors(containerColor = panel), shape = RoundedCornerShape(20.dp)) {
-            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Узел подключения", color = ink, fontWeight = FontWeight.SemiBold)
-                OutlinedTextField(
-                    value = relay, onValueChange = { relay = it.take(240) },
-                    modifier = Modifier.fillMaxWidth(), label = { Text("HTTPS-адрес узла") },
-                    singleLine = true, shape = RoundedCornerShape(14.dp)
-                )
-                OutlinedTextField(
-                    value = account, onValueChange = { account = it.filter { c -> c.isLetterOrDigit() || c in "_.-" }.take(32) },
-                    modifier = Modifier.fillMaxWidth(), label = { Text("Твой логин") },
-                    singleLine = true, shape = RoundedCornerShape(14.dp)
-                )
-                OutlinedTextField(
-                    value = password, onValueChange = { password = it.take(128) },
-                    modifier = Modifier.fillMaxWidth(), label = { Text("Пароль") },
-                    singleLine = true, shape = RoundedCornerShape(14.dp),
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = registerMode, onClick = { registerMode = true }, label = { Text("Регистрация") })
-                    FilterChip(selected = !registerMode, onClick = { registerMode = false }, label = { Text("Вход") })
+        if (token.isBlank()) {
+            Card(colors = CardDefaults.cardColors(containerColor = panel), shape = RoundedCornerShape(18.dp)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    OutlinedTextField(
+                        value = relay,
+                        onValueChange = { relay = it.take(240) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("HTTPS-сервер") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = account,
+                        onValueChange = { account = it.filter { c -> c.isLetterOrDigit() || c in "_.-" }.take(32) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Выбери юзернейм") },
+                        supportingText = { Text("3–32 символа: латиница, цифры, точка, дефис или _") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it.take(128) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Пароль (от 8 символов)") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = registerMode, onClick = { registerMode = true }, label = { Text("Создать аккаунт") })
+                        FilterChip(selected = !registerMode, onClick = { registerMode = false }, label = { Text("Войти") })
+                    }
+                    Button(
+                        onClick = {
+                            if (account.trim().length !in 3..32 || password.length < 8 || !relay.startsWith("https://")) {
+                                status = "Проверь HTTPS-сервер, юзернейм и пароль."
+                            } else if (!busy) {
+                                busy = true
+                                status = if (registerMode) "Создаю аккаунт…" else "Вхожу…"
+                                Thread {
+                                    try {
+                                        val result = NdrimedaApi.authenticate(relay, account.trim(), password, registerMode)
+                                        val newToken = result.optString("access_token")
+                                        if (newToken.isBlank()) error("Сервер не вернул токен входа.")
+                                        val canonicalName = result.optJSONObject("user")?.optString("username").orEmpty().ifBlank { account.trim() }
+                                        mainHandler.post {
+                                            account = canonicalName
+                                            token = newToken
+                                            prefs.edit()
+                                                .putString("relay_url", relay.trim().trimEnd('/'))
+                                                .putString("username", canonicalName)
+                                                .putString("auth_token", newToken)
+                                                .apply()
+                                            password = ""
+                                            status = "Аккаунт подключён."
+                                            busy = false
+                                        }
+                                    } catch (e: Exception) {
+                                        mainHandler.post {
+                                            status = e.message?.take(180) ?: "Ошибка подключения."
+                                            busy = false
+                                        }
+                                    }
+                                }.start()
+                            }
+                        },
+                        enabled = !busy && account.trim().length in 3..32 && password.length >= 8 && relay.startsWith("https://"),
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (busy) "Подожди…" else if (registerMode) "Зарегистрироваться" else "Войти") }
                 }
+            }
+        } else {
+            OutlinedTextField(
+                value = recipient,
+                onValueChange = {
+                    recipient = it.filter { c -> c.isLetterOrDigit() || c in "_.-" }.take(32)
+                    prefs.edit().putString("network_recipient", recipient).apply()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Кому написать — юзернейм") },
+                placeholder = { Text("Например, Lucas_123") },
+                singleLine = true
+            )
+            OutlinedTextField(
+                value = draft,
+                onValueChange = {
+                    draft = it.take(4000)
+                    prefs.edit().putString("network_draft", draft).apply()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Сообщение") },
+                placeholder = { Text("Напиши сообщение…") },
+                minLines = 2,
+                maxLines = 5
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(
                     onClick = {
-                        if (account.trim().length !in 3..32 || password.length < 8) {
-                            status = "Логин: 3–32 символа. Пароль: минимум 8 символов."; return@Button
-                        }
-                        runNetwork {
-                            val result = NdrimedaApi.authenticate(relay, account.trim(), password, registerMode)
-                            val newToken = result.optString("access_token")
-                            if (newToken.isBlank()) error("Узел не вернул токен входа")
-                            mainHandler.post {
-                                token = newToken
-                                account = result.optJSONObject("user")?.optString("username", account) ?: account
-                                prefs.edit().putString("relay_url", relay.trim().trimEnd('/'))
-                                    .putString("username", account).putString("auth_token", newToken).apply()
-                                password = ""
-                                status = "Вход выполнен. Теперь можно отправлять сообщения."
-                                busy = false
+                        val to = recipient.trim()
+                        val body = draft.trim()
+                        when {
+                            to.length !in 3..32 -> status = "Введи юзернейм получателя (3–32 символа)."
+                            to.equals(account, ignoreCase = true) -> status = "Нельзя написать самому себе."
+                            body.isBlank() -> status = "Напиши текст сообщения."
+                            busy -> Unit
+                            else -> {
+                                busy = true
+                                status = "Отправляю сообщение…"
+                                Thread {
+                                    try {
+                                        NdrimedaApi.sendTo(relay, token, to, body)
+                                        mainHandler.post {
+                                            draft = ""
+                                            prefs.edit().remove("network_draft").apply()
+                                            status = "Сообщение отправлено пользователю @${to}."
+                                            busy = false
+                                            refresh()
+                                        }
+                                    } catch (e: Exception) {
+                                        mainHandler.post {
+                                            status = e.message?.take(180) ?: "Не удалось отправить. Черновик сохранён."
+                                            busy = false
+                                        }
+                                    }
+                                }.start()
                             }
                         }
                     },
-                    enabled = !busy && relay.startsWith("https://") && password.length >= 8,
-                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)
-                ) { Text(if (registerMode) "Создать аккаунт на узле" else "Войти на узел") }
+                    enabled = !busy && recipient.trim().length in 3..32 && draft.isNotBlank(),
+                    modifier = Modifier.weight(1f)
+                ) { Text(if (busy) "Отправка…" else "Отправить") }
+                OutlinedButton(onClick = { refresh() }, enabled = !busy) { Text("Обновить") }
             }
-        }
-
-        if (token.isNotBlank()) {
-            Card(colors = CardDefaults.cardColors(containerColor = panel), shape = RoundedCornerShape(20.dp)) {
-                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Новое сообщение", color = ink, fontWeight = FontWeight.SemiBold)
-                    OutlinedTextField(
-                        value = recipient, onValueChange = { recipient = it.filter { c -> c.isLetterOrDigit() || c in "_.-@" }.take(300) },
-                        modifier = Modifier.fillMaxWidth(), label = { Text("Адрес: логин или логин@узел.домен") },
-                        supportingText = { Text("Для другого узла: username@example.org. Оба узла должны настроить взаимное доверие.") },
-                        singleLine = true, shape = RoundedCornerShape(14.dp)
-                    )
-                    OutlinedTextField(
-                        value = draft, onValueChange = { draft = it.take(4000) },
-                        modifier = Modifier.fillMaxWidth(), label = { Text("Сообщение") },
-                        minLines = 2, maxLines = 5, shape = RoundedCornerShape(14.dp)
-                    )
-                    Button(
-                        onClick = {
-                            val to = recipient.trim()
-                            val body = draft.trim()
-                            if (to.length < 3 || body.isBlank()) { status = "Укажи логин получателя и текст."; return@Button }
-                            runNetwork {
-                                NdrimedaApi.sendTo(relay, token, to, body)
-                                val item = RemoteMessage(System.currentTimeMillis(), account, to, body, "только что")
-                                mainHandler.post {
-                                    sent = (sent + item).takeLast(100)
-                                    draft = ""
-                                    status = if (to.contains("@")) "Передано на независимый узел для доставки $to." else "Отправлено на узел для доставки пользователю @$to."
-                                    busy = false
-                                }
-                            }
-                        },
-                        enabled = !busy && recipient.trim().length >= 3 && draft.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)
-                    ) { Text("Отправить через интернет") }
-                    OutlinedButton(
-                        onClick = { refreshInbox() }, enabled = !busy,
-                        modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)
-                    ) { Text("Обновить входящие") }
-                }
-            }
+            OutlinedButton(
+                onClick = {
+                    prefs.edit().remove("auth_token").apply()
+                    token = ""
+                    timeline = emptyList()
+                    status = "Выполнен выход с сервера."
+                },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Выйти с сервера") }
         }
 
         Text(status, color = muted, fontSize = 12.sp)
-        Text("Переписка на этом узле", color = ink, fontWeight = FontWeight.SemiBold)
+        HorizontalDivider(color = if (dark) Color(0xFF303746) else Color(0xFFE9EBF2))
+        Text("История переписки", color = ink, fontWeight = FontWeight.SemiBold)
         LazyColumn(
-            modifier = Modifier.weight(1f, fill = false).fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 8.dp)
         ) {
-            items((inbox.map { it.copy(text = it.text, recipient = "Вы", sender = it.sender) } + sent).takeLast(100).reversed()) { item ->
-                Card(colors = CardDefaults.cardColors(containerColor = panel), shape = RoundedCornerShape(16.dp)) {
-                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(if (item.sender == account) "Вы → ${item.recipient}" else "${item.sender} → вам", color = accent, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                        Text(item.text, color = ink)
-                        Text(item.createdAt, color = muted, fontSize = 10.sp)
+            items(timeline, key = { it.key }) { item ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (item.outgoing) Arrangement.End else Arrangement.Start) {
+                    Column(
+                        Modifier.widthIn(max = 310.dp)
+                            .background(if (item.outgoing) accent else panel, RoundedCornerShape(16.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            if (item.outgoing) "Ты → @${item.recipient}" else "@${item.sender} → тебе",
+                            color = if (item.outgoing) Color.White else accent,
+                            fontSize = 11.sp, fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(item.text, color = if (item.outgoing) Color.White else ink)
+                        Spacer(Modifier.height(4.dp))
+                        Text(item.createdAt.replace("T", " ").take(16), color = if (item.outgoing) Color(0xFFE0E4FF) else muted, fontSize = 10.sp)
                     }
                 }
             }
+            if (timeline.isEmpty()) item {
+                Text("Сообщений пока нет. Напиши человеку по юзернейму и нажми «Отправить».", color = muted, modifier = Modifier.padding(vertical = 20.dp))
+            }
         }
-        Text(
-            "Федерация работает только между узлами, которые явно настроили взаимное доверие. Узлы хранят текст сообщений; E2EE ещё нет. Не отправляй конфиденциальные данные.",
-            color = muted, fontSize = 11.sp
-        )
     }
 }
