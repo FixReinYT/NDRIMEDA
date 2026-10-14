@@ -5,7 +5,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-data class ChatMessage(val username: String, val text: String, val createdAt: String)
+data class ChatMessage(val id: Long, val username: String, val recipient: String?, val text: String, val createdAt: String)
 data class RemoteMessage(val id: Long, val sender: String, val recipient: String, val text: String, val createdAt: String)
 
 object NdrimedaApi {
@@ -44,7 +44,7 @@ object NdrimedaApi {
         val array = JSONArray(call(base, "/messages?limit=100", "GET", token = token))
         return (0 until array.length()).map { i ->
             val item = array.getJSONObject(i)
-            ChatMessage(item.optString("username"), item.optString("text"), item.optString("created_at"))
+            ChatMessage(item.optLong("id"), item.optString("username"), item.optString("recipient").takeIf { it.isNotBlank() && it != "null" }, item.optString("text"), item.optString("created_at"))
         }
     }
 
