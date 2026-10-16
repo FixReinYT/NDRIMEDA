@@ -1,30 +1,19 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
-    namespace = "com.ndrimeda"
+    namespace = "org.lucassden.deafblindtranslator"
     compileSdk = 35
-    buildFeatures { compose = true }
     defaultConfig {
-        applicationId = "com.ndrimeda"
-        minSdk = 26
-        targetSdk = 35
-        versionCode = 45
-        versionName = "0.4.0-beta45"
+        applicationId = "org.lucassden.deafblindtranslator"
+        minSdk = 23
+        targetSdk = 28
+        versionCode = 1
+        versionName = "1.0-alpha"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
-}
-
-dependencies {
-    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
-    implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.material3:material3")
 }
