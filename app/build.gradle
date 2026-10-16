@@ -1,0 +1,7 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'org.lucassden.deafblindtranslator'
+    compileSdk 35
+    defaultConfig { applicationId 'org.lucassden.deafblindtranslator'; minSdk 23; targetSdk 28; versionCode 1; versionName '1.0-alpha' }
+}
